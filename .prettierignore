@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+*.local
+
+# Logs
+logs
+*.log
+
+# Editor directories
+.vscode
+.idea
+
+# Git
+.git
+
+# Lock files (don't format)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build info
+*.tsbuildinfo

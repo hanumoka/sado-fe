@@ -14,7 +14,14 @@
       "Bash(npm outdated:*)",
       "Bash(node --version)",
       "Bash(npm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd comprehensive multi-tab session management learning guide\n\n- Add complete 8-chapter learning guide \\(docs/multi-tab-session-guide.md\\)\n  - Chapter 0: Core concepts \\(Web Storage, BroadcastChannel API\\)\n  - Chapter 1: Storage layer implementation\n  - Chapter 2: BroadcastChannel communication system\n  - Chapter 3: Hybrid storage strategy\n  - Chapter 4: Tab lifecycle management \\(PING/PONG\\)\n  - Chapter 5: Authentication synchronization\n  - Chapter 6: UI components\n  - Chapter 7: Complete shutdown detection\n  - Chapter 8: Optimization, debugging, testing\n\n- Setup project infrastructure\n  - Install and configure Tailwind CSS + shadcn/ui\n  - Add Prettier for code formatting\n  - Configure PostCSS and autoprefixer\n  - Update ESLint config for Prettier integration\n  - Add environment variable patterns to .gitignore\n\n- Initialize UI foundation\n  - Setup shadcn/ui components \\(Button, Card, Input\\)\n  - Create SADO POC landing page\n  - Configure Tailwind with design tokens\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(tree:*)",
+      "Bash(xargs ls:*)",
+      "Bash(wc:*)",
+      "Bash(xargs cat:*)",
+      "Bash(git mv:*)",
+      "WebSearch"
     ]
   }
 }

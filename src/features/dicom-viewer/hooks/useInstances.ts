@@ -36,14 +36,18 @@ export function useInstances(seriesId: string) {
   return useQuery({
     queryKey: ['instances', seriesId],
     queryFn: async () => {
-      const [series, instances] = await Promise.all([
-        fetchSeriesById(seriesId),
-        fetchInstancesBySeriesId(seriesId),
-      ])
+      // 1. Series 정보 조회 (studyInstanceUid 포함)
+      const series = await fetchSeriesById(seriesId)
 
       if (!series) {
         throw new Error('Series not found')
       }
+
+      // 2. Instance 목록 조회 (DICOMWeb 표준: studyUID + seriesUID 필요)
+      const instances = await fetchInstancesBySeriesId(
+        series.studyInstanceUid,
+        series.seriesInstanceUid
+      )
 
       return { series, instances }
     },

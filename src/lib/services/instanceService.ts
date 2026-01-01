@@ -53,13 +53,21 @@ async function realFetchSeriesById(
 
 /**
  * Mock: Series의 Instance 목록 조회
+ * @param _studyInstanceUid - Study Instance UID (Mock에서는 무시)
+ * @param seriesInstanceUid - Series Instance UID (Mock에서는 seriesId로 사용)
  */
 async function mockFetchInstancesBySeriesId(
-  seriesId: string
+  _studyInstanceUid: string,
+  seriesInstanceUid: string
 ): Promise<ViewerInstance[]> {
   await new Promise((resolve) => setTimeout(resolve, mockConfig.delay))
 
-  const instances = MOCK_INSTANCES.filter((i) => i.seriesId === seriesId)
+  // Mock에서는 seriesInstanceUid를 seriesId처럼 사용하여 필터링
+  // 실제 Mock 데이터에서는 id와 seriesInstanceUid 모두 검사
+  const instances = MOCK_INSTANCES.filter(
+    (i) => i.seriesId === seriesInstanceUid ||
+           MOCK_SERIES.find(s => s.seriesInstanceUid === seriesInstanceUid && s.id === i.seriesId)
+  )
 
   // Mock Instance에 추가 정보 (실제로는 DICOM 파일에서 파싱)
   return instances.map((instance) => ({
@@ -77,11 +85,16 @@ async function mockFetchInstancesBySeriesId(
 
 /**
  * Real: Series의 Instance 목록 조회 (DICOMWeb QIDO-RS)
+ * @param studyInstanceUid - Study Instance UID
+ * @param seriesInstanceUid - Series Instance UID
  */
 async function realFetchInstancesBySeriesId(
-  seriesId: string
+  studyInstanceUid: string,
+  seriesInstanceUid: string
 ): Promise<ViewerInstance[]> {
-  return api.get<ViewerInstance[]>(`/qido-rs/series/${seriesId}/instances`)
+  return api.get<ViewerInstance[]>(
+    `/dicomweb/studies/${studyInstanceUid}/series/${seriesInstanceUid}/instances`
+  )
 }
 
 // ============================================================

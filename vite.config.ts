@@ -29,15 +29,7 @@ export default defineConfig({
       },
     },
   },
-  // Cornerstone3D Web Worker 호환성 설정
-  worker: {
-    format: 'es',
-  },
-  optimizeDeps: {
-    exclude: ['@cornerstonejs/dicom-image-loader'],
-  },
   build: {
-    // Cornerstone3D 대용량 번들 경고 억제
-    chunkSizeWarningLimit: 2000,
+    chunkSizeWarningLimit: 1000,
   },
 })

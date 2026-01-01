@@ -74,8 +74,8 @@ async function realFetchStudies(
 
   const queryString = params.toString()
   const url = queryString
-    ? `/qido-rs/studies?${queryString}`
-    : '/qido-rs/studies'
+    ? `/dicomweb/studies?${queryString}`
+    : '/dicomweb/studies'
 
   return api.get<Study[]>(url)
 }
@@ -110,7 +110,7 @@ async function mockFetchSeriesByStudyId(studyId: string): Promise<Series[]> {
  * Real: Study의 Series 목록 조회 (DICOMWeb QIDO-RS)
  */
 async function realFetchSeriesByStudyId(studyId: string): Promise<Series[]> {
-  return api.get<Series[]>(`/qido-rs/studies/${studyId}/series`)
+  return api.get<Series[]>(`/dicomweb/studies/${studyId}/series`)
 }
 
 // ============================================================

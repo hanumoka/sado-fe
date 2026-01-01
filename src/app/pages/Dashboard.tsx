@@ -1,4 +1,5 @@
-import { Settings, Database, HardDrive, Activity } from 'lucide-react';
+import { Settings, Database, HardDrive, Activity } from 'lucide-react'
+import { useEffect } from 'react'
 
 /**
  * Dashboard.tsx
@@ -14,6 +15,11 @@ import { Settings, Database, HardDrive, Activity } from 'lucide-react';
  * - 빠른 링크 (Admin 기능 바로가기)
  */
 export default function Dashboard() {
+
+  useEffect(() => {
+    throw new Error("테스트 에러 !");
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
@@ -158,5 +164,5 @@ export default function Dashboard() {
         </ul>
       </div>
     </div>
-  );
+  )
 }

@@ -1,5 +1,5 @@
-import { Layers } from 'lucide-react';
-import ComingSoonPage from './ComingSoonPage';
+import { Layers } from 'lucide-react'
+import ComingSoonPage from './ComingSoonPage'
 
 /**
  * TieringManagePage.tsx
@@ -30,5 +30,5 @@ export default function TieringManagePage() {
         'FileAccessLog 추적 (BE Entity 추가 필요)',
       ]}
     />
-  );
+  )
 }

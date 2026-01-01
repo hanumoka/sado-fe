@@ -1,82 +1,185 @@
-import { useNavigate } from 'react-router-dom';
-import type { Patient } from '../types/patient';
+import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowUpDown, ArrowUp, ArrowDown, User } from 'lucide-react'
+import type { Patient } from '../types/patient'
+import Pagination from './Pagination'
 
 /**
  * PatientList.tsx
  *
  * 환자 목록 테이블 컴포넌트
  *
- * 목적:
+ * 기능:
  * - 환자 데이터를 테이블로 표시
  * - 클릭 시 Study List로 이동
- * - 빈 상태 처리
+ * - 컬럼별 정렬
+ * - 페이지네이션
+ * - 환자 상세 모달 (더블클릭)
  */
 
 interface PatientListProps {
-  patients: Patient[];
+  patients: Patient[]
+  pageSize?: number
+  onPatientSelect?: (patient: Patient) => void
 }
 
-export default function PatientList({ patients }: PatientListProps) {
-  const navigate = useNavigate();
+type SortKey =
+  | 'name'
+  | 'age'
+  | 'gender'
+  | 'issuer'
+  | 'studiesCount'
+  | 'lastStudyDate'
+type SortOrder = 'asc' | 'desc'
+
+interface SortConfig {
+  key: SortKey
+  order: SortOrder
+}
+
+const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'name', label: '이름' },
+  { key: 'age', label: '나이', className: 'w-20' },
+  { key: 'gender', label: '성별', className: 'w-20' },
+  { key: 'issuer', label: '발급 기관' },
+  { key: 'studiesCount', label: 'Study 수', className: 'w-24' },
+  { key: 'lastStudyDate', label: '최근 Study', className: 'w-32' },
+]
+
+export default function PatientList({
+  patients,
+  pageSize = 10,
+  onPatientSelect,
+}: PatientListProps) {
+  const navigate = useNavigate()
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'lastStudyDate',
+    order: 'desc',
+  })
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig((prev) => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }))
+    setCurrentPage(1)
+  }
+
+  const getSortIcon = (key: SortKey) => {
+    if (sortConfig.key !== key) {
+      return <ArrowUpDown className="h-4 w-4 text-gray-400" />
+    }
+    return sortConfig.order === 'asc' ? (
+      <ArrowUp className="h-4 w-4 text-blue-600" />
+    ) : (
+      <ArrowDown className="h-4 w-4 text-blue-600" />
+    )
+  }
+
+  const sortedPatients = useMemo(() => {
+    const sorted = [...patients].sort((a, b) => {
+      const { key, order } = sortConfig
+      let comparison = 0
+
+      switch (key) {
+        case 'name':
+        case 'issuer':
+        case 'gender':
+          comparison = a[key].localeCompare(b[key])
+          break
+        case 'age':
+        case 'studiesCount':
+          comparison = a[key] - b[key]
+          break
+        case 'lastStudyDate':
+          comparison = new Date(a[key]).getTime() - new Date(b[key]).getTime()
+          break
+      }
+
+      return order === 'asc' ? comparison : -comparison
+    })
+
+    return sorted
+  }, [patients, sortConfig])
+
+  const totalPages = Math.ceil(sortedPatients.length / pageSize)
+  const paginatedPatients = sortedPatients.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  )
 
   const handleRowClick = (patientId: string) => {
-    // Week 3-4에서 구현 예정
-    navigate(`/studies?patientId=${patientId}`);
-  };
+    navigate(`/studies?patientId=${patientId}`)
+  }
 
-  // 빈 상태
+  const handleRowDoubleClick = (patient: Patient) => {
+    onPatientSelect?.(patient)
+  }
+
   if (patients.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow p-12 text-center">
-        <p className="text-gray-500 text-lg">검색 결과가 없습니다</p>
-        <p className="text-gray-400 text-sm mt-2">
-          다른 검색 조건으로 시도해보세요
-        </p>
-      </div>
-    );
+    return null
   }
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          {/* 테이블 헤더 */}
+        <table
+          className="min-w-full divide-y divide-gray-200"
+          aria-label="환자 목록"
+        >
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                scope="col"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
                 Patient ID
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                이름
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                나이
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                성별
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                발급 기관
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Study 수
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                최근 Study
-              </th>
+              {COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  scope="col"
+                  aria-sort={
+                    sortConfig.key === column.key
+                      ? sortConfig.order === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                  }
+                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${column.className || ''}`}
+                  onClick={() => handleSort(column.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleSort(column.key)
+                    }
+                  }}
+                  tabIndex={0}
+                  role="columnheader"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{column.label}</span>
+                    {getSortIcon(column.key)}
+                  </div>
+                </th>
+              ))}
             </tr>
           </thead>
 
-          {/* 테이블 바디 */}
           <tbody className="bg-white divide-y divide-gray-200">
-            {patients.map((patient) => (
+            {paginatedPatients.map((patient) => (
               <tr
                 key={patient.id}
                 onClick={() => handleRowClick(patient.id)}
+                onDoubleClick={() => handleRowDoubleClick(patient)}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {patient.dicomPatientId}
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-gray-400" />
+                    {patient.dicomPatientId}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {patient.name}
@@ -85,7 +188,15 @@ export default function PatientList({ patients }: PatientListProps) {
                   {patient.age}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {patient.gender === 'M' ? '남성' : '여성'}
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      patient.gender === 'M'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-pink-100 text-pink-800'
+                    }`}
+                  >
+                    {patient.gender === 'M' ? '남성' : '여성'}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {patient.issuer}
@@ -102,12 +213,13 @@ export default function PatientList({ patients }: PatientListProps) {
         </table>
       </div>
 
-      {/* 결과 수 표시 */}
-      <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
-        <p className="text-sm text-gray-700">
-          총 <span className="font-medium">{patients.length}</span>명의 환자
-        </p>
-      </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={patients.length}
+        pageSize={pageSize}
+      />
     </div>
-  );
+  )
 }

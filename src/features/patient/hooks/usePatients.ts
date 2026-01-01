@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { MOCK_PATIENTS } from '@/lib/mockData';
-import type {Patient, PatientSearchParams} from '../types/patient';
+import { useQuery } from '@tanstack/react-query'
+import { fetchPatients } from '@/lib/services'
+import type { PatientSearchParams } from '../types/patient'
 
 /**
  * usePatients.ts
@@ -12,44 +12,10 @@ import type {Patient, PatientSearchParams} from '../types/patient';
  * - 자동 캐싱 및 refetch
  * - 로딩/에러 상태 관리
  *
- * 현재: Mock 데이터 사용
- * Week 6+: Real API로 전환 예정
+ * 서비스 레이어:
+ * - VITE_USE_MOCK=true: Mock 데이터
+ * - VITE_USE_MOCK=false: Real API
  */
-
-/**
- * 환자 목록 조회 함수
- *
- * @param searchParams - 검색 파라미터 (선택적)
- * @returns Promise<Patient[]>
- *
- * Week 1-5: Mock 데이터 필터링
- * Week 6+: api.get<Patient[]>('/api/patients', { params: searchParams })
- */
-const fetchPatients = async (
-  searchParams?: PatientSearchParams
-): Promise<Patient[]> => {
-  // Mock 데이터 복사 (원본 훼손 방지)
-  let patients = [...MOCK_PATIENTS];
-
-  // 이름 필터링
-  if (searchParams?.name) {
-    const searchName = searchParams.name.toLowerCase();
-    patients = patients.filter((p) =>
-      p.name.toLowerCase().includes(searchName)
-    );
-  }
-
-  // 성별 필터링
-  if (searchParams?.gender && searchParams.gender !== 'ALL') {
-    patients = patients.filter((p) => p.gender === searchParams.gender);
-  }
-
-  // API 지연 시뮬레이션 (500ms)
-  // 실제 네트워크 환경을 시뮬레이션하여 로딩 상태 테스트
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
-  return patients;
-};
 
 /**
  * usePatients Hook
@@ -75,5 +41,5 @@ export function usePatients(searchParams?: PatientSearchParams) {
     // staleTime: 5분 (queryClient 기본값 사용)
     // 5분간 데이터를 fresh로 간주하여 재요청하지 않음
     staleTime: 1000 * 60 * 5,
-  });
+  })
 }

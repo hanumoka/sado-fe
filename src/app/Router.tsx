@@ -1,14 +1,15 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Layout from '@/components/layout/Layout';
-import Dashboard from '@/app/pages/Dashboard';
-import PatientListPage from '@/app/pages/PatientListPage';
-import StudyListPage from '@/app/pages/StudyListPage';
-import StudyDetailPage from '@/app/pages/StudyDetailPage';
-import UploadPage from '@/app/pages/UploadPage';
-import DicomViewerPage from '@/app/pages/DicomViewerPage';
-import SeaweedFSManagePage from '@/app/pages/admin/SeaweedFSManagePage';
-import StorageMonitoringPage from '@/app/pages/admin/StorageMonitoringPage';
-import TieringManagePage from '@/app/pages/admin/TieringManagePage';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import Layout from '@/components/layout/Layout'
+import Dashboard from '@/app/pages/Dashboard'
+import PatientListPage from '@/app/pages/PatientListPage'
+import StudyListPage from '@/app/pages/StudyListPage'
+import StudyDetailPage from '@/app/pages/StudyDetailPage'
+import UploadPage from '@/app/pages/UploadPage'
+import DicomViewerPage from '@/app/pages/DicomViewerPage'
+import NotFoundPage from '@/app/pages/NotFoundPage'
+import SeaweedFSManagePage from '@/app/pages/admin/SeaweedFSManagePage'
+import StorageMonitoringPage from '@/app/pages/admin/StorageMonitoringPage'
+import TieringManagePage from '@/app/pages/admin/TieringManagePage'
 
 /**
  * Router.tsx
@@ -18,7 +19,9 @@ import TieringManagePage from '@/app/pages/admin/TieringManagePage';
  * 주요 기능:
  * 1. Nested Routes 패턴 (Layout 내부에 자식 라우트 렌더링)
  * 2. Admin 전용 시스템 (메인 대시보드가 Admin 대시보드 역할)
- * 3. Phase 1 (Core PACS) + Phase 2 (고급 관리 기능)
+ * 3. 404 페이지 처리
+ *
+ * Note: 인증/인가 기능은 POC 단계에서 제외됨
  */
 export default function Router() {
   return (
@@ -38,7 +41,7 @@ export default function Router() {
           {/* /admin 경로는 메인 대시보드로 리다이렉트 (하위 호환성) */}
           <Route path="admin" element={<Navigate to="/" replace />} />
 
-          {/* Phase 2: 고급 관리 기능 (Coming Soon) */}
+          {/* Phase 2: 고급 관리 기능 */}
           <Route path="admin/seaweedfs" element={<SeaweedFSManagePage />} />
           <Route path="admin/storage-monitoring" element={<StorageMonitoringPage />} />
           <Route path="admin/tiering" element={<TieringManagePage />} />
@@ -46,7 +49,10 @@ export default function Router() {
 
         {/* DICOM Viewer (Full Screen - Layout 밖) */}
         <Route path="/viewer/:seriesId" element={<DicomViewerPage />} />
+
+        {/* 404 Not Found */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
-  );
+  )
 }

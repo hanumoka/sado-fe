@@ -1,67 +1,50 @@
-import { Upload as UploadIcon, RefreshCw } from 'lucide-react';
-import UploadDropzone from '@/features/upload/components/UploadDropzone';
-import UploadProgress from '@/features/upload/components/UploadProgress';
-import { useUploadDicom } from '@/features/upload/hooks/useUploadDicom';
+import { Link } from 'react-router-dom'
+import { Upload as UploadIcon, ArrowRight } from 'lucide-react'
+import UploadDropzone from '@/features/upload/components/UploadDropzone'
+import UploadProgress from '@/features/upload/components/UploadProgress'
+import UploadResult from '@/features/upload/components/UploadResult'
+import { useUploadDicom } from '@/features/upload/hooks/useUploadDicom'
+import { PageHeader } from '@/components/common'
+import { Button } from '@/components/ui/button'
 
 /**
  * UploadPage.tsx
  *
  * DICOM 파일 업로드 페이지
  *
- * 통합:
- * 1. UploadDropzone (드래그 앤 드롭 영역)
+ * 기능:
+ * 1. UploadDropzone (드래그 앤 드롭, 폴더 지원)
  * 2. UploadProgress (진행 상태 표시)
- * 3. useUploadDicom Hook (업로드 로직)
+ * 3. UploadResult (결과 요약)
+ * 4. 병렬 업로드 (동시 3개)
+ * 5. 실패한 파일 재시도
  */
 export default function UploadPage() {
   const {
     uploadFiles,
     isUploading,
+    summary,
     uploadDicomFiles,
     clearUploadFiles,
-  } = useUploadDicom();
+    retryFailed,
+  } = useUploadDicom()
 
   const handleFilesSelected = (files: File[]) => {
-    uploadDicomFiles(files);
-  };
+    uploadDicomFiles(files)
+  }
 
-  const handleReset = () => {
-    clearUploadFiles();
-  };
-
-  // 전체 통계
-  const totalFiles = uploadFiles.length;
-  const successCount = uploadFiles.filter((f) => f.status === 'success').length;
-  const errorCount = uploadFiles.filter((f) => f.status === 'error').length;
-  const isAllComplete =
-    totalFiles > 0 &&
-    uploadFiles.every((f) => f.status === 'success' || f.status === 'error');
+  const hasFiles = uploadFiles.length > 0
+  const hasFailedFiles = uploadFiles.some((f) => f.status === 'error')
+  const isComplete = hasFiles && !isUploading && summary !== null
 
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <UploadIcon className="h-8 w-8 text-blue-600" />
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">DICOM 업로드</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              DICOM 파일을 선택하여 PACS에 업로드하세요
-            </p>
-          </div>
-        </div>
-
-        {/* 초기화 버튼 */}
-        {isAllComplete && (
-          <button
-            onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            새로 업로드
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={UploadIcon}
+        title="DICOM 업로드"
+        description="DICOM 파일을 선택하여 PACS에 업로드하세요. 폴더 전체를 업로드할 수도 있습니다."
+      />
 
       {/* 안내 사항 */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -71,61 +54,50 @@ export default function UploadPage() {
         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
           <li>DICOM 파일(.dcm)만 업로드 가능합니다</li>
           <li>파일을 드래그 앤 드롭하거나 클릭하여 선택하세요</li>
-          <li>여러 파일을 동시에 선택할 수 있습니다</li>
-          <li>업로드된 파일은 SeaweedFS에 저장됩니다</li>
+          <li>폴더를 선택하면 폴더 내 모든 DICOM 파일이 업로드됩니다</li>
+          <li>최대 3개 파일이 동시에 업로드됩니다</li>
         </ul>
       </div>
 
-      {/* 업로드 영역 */}
-      <UploadDropzone
-        onFilesSelected={handleFilesSelected}
-        disabled={isUploading}
-      />
+      {/* 업로드 영역 (업로드 중이 아닐 때만 표시) */}
+      {!isUploading && !isComplete && (
+        <UploadDropzone
+          onFilesSelected={handleFilesSelected}
+          disabled={isUploading}
+        />
+      )}
 
       {/* 업로드 진행 상태 */}
-      {uploadFiles.length > 0 && <UploadProgress files={uploadFiles} />}
+      {hasFiles && <UploadProgress files={uploadFiles} />}
 
-      {/* 완료 요약 */}
-      {isAllComplete && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            업로드 완료
+      {/* 업로드 결과 요약 */}
+      {isComplete && summary && (
+        <UploadResult
+          summary={summary}
+          onRetryFailed={hasFailedFiles ? retryFailed : undefined}
+          onClear={clearUploadFiles}
+          hasFailedFiles={hasFailedFiles}
+        />
+      )}
+
+      {/* 성공 시 다음 단계 안내 */}
+      {isComplete && summary && summary.successCount > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-green-900 mb-2">
+            업로드가 완료되었습니다!
           </h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{totalFiles}</p>
-              <p className="text-sm text-gray-600 mt-1">전체 파일</p>
-            </div>
-            <div className="bg-green-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">
-                {successCount}
-              </p>
-              <p className="text-sm text-green-700 mt-1">성공</p>
-            </div>
-            <div className="bg-red-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-red-600">{errorCount}</p>
-              <p className="text-sm text-red-700 mt-1">실패</p>
-            </div>
-          </div>
-
-          {/* 성공 시 다음 단계 안내 */}
-          {successCount > 0 && (
-            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                {successCount}개의 DICOM 파일이 성공적으로 업로드되었습니다.
-                <br />
-                <a
-                  href="/patients"
-                  className="text-blue-600 hover:text-blue-700 font-medium underline"
-                >
-                  환자 목록
-                </a>
-                에서 확인하실 수 있습니다.
-              </p>
-            </div>
-          )}
+          <p className="text-sm text-green-800 mb-4">
+            {summary.successCount}개의 DICOM 파일이 성공적으로 업로드되었습니다.
+            환자 목록에서 업로드된 데이터를 확인할 수 있습니다.
+          </p>
+          <Link to="/patients">
+            <Button>
+              환자 목록 보기
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </Link>
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -1,5 +1,5 @@
-import { BarChart3 } from 'lucide-react';
-import ComingSoonPage from './ComingSoonPage';
+import { BarChart3 } from 'lucide-react'
+import ComingSoonPage from './ComingSoonPage'
 
 /**
  * StorageMonitoringPage.tsx
@@ -28,5 +28,5 @@ export default function StorageMonitoringPage() {
         'GET /api/admin/metrics/tier-history - Tier 전환 이력',
       ]}
     />
-  );
+  )
 }

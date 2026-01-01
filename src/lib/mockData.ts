@@ -7,49 +7,9 @@
  * Week 6-7 DICOMWeb API 완성 후 Real API로 전환
  */
 
-export interface Patient {
-  id: string;
-  dicomPatientId: string;
-  name: string;
-  age: number;
-  gender: 'M' | 'F';
-  issuer: string;
-  studiesCount: number;
-  lastStudyDate: string;
-}
+import type { Patient, Study, Series, Instance } from '@/types'
 
-export interface Study {
-  id: string;
-  studyInstanceUid: string;
-  patientId: string;
-  patientName: string;
-  studyDate: string;
-  studyTime: string;
-  modality: string;
-  studyDescription: string;
-  seriesCount: number;
-  instancesCount: number;
-}
-
-export interface Series {
-  id: string;
-  seriesInstanceUid: string;
-  studyId: string;
-  seriesNumber: number;
-  modality: string;
-  seriesDescription: string;
-  instancesCount: number;
-}
-
-export interface Instance {
-  id: string;
-  sopInstanceUid: string;
-  seriesId: string;
-  instanceNumber: number;
-  storageUri: string;
-}
-
-// Mock 환자 데이터 (10명)
+// Mock 환자 데이터 (30명)
 export const MOCK_PATIENTS: Patient[] = [
   {
     id: 'PAT-001',
@@ -151,9 +111,209 @@ export const MOCK_PATIENTS: Patient[] = [
     studiesCount: 2,
     lastStudyDate: '2025-11-10',
   },
-];
+  {
+    id: 'PAT-011',
+    dicomPatientId: 'patient011',
+    name: 'Kevin Park',
+    age: 47,
+    gender: 'M',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 4,
+    lastStudyDate: '2025-11-05',
+  },
+  {
+    id: 'PAT-012',
+    dicomPatientId: 'patient012',
+    name: 'Amanda Chen',
+    age: 33,
+    gender: 'F',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 2,
+    lastStudyDate: '2025-10-30',
+  },
+  {
+    id: 'PAT-013',
+    dicomPatientId: 'patient013',
+    name: 'Thomas Kim',
+    age: 55,
+    gender: 'M',
+    issuer: 'HOSPITAL_A',
+    studiesCount: 7,
+    lastStudyDate: '2025-10-25',
+  },
+  {
+    id: 'PAT-014',
+    dicomPatientId: 'patient014',
+    name: 'Jennifer Lopez',
+    age: 42,
+    gender: 'F',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 3,
+    lastStudyDate: '2025-10-20',
+  },
+  {
+    id: 'PAT-015',
+    dicomPatientId: 'patient015',
+    name: 'William Garcia',
+    age: 61,
+    gender: 'M',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 5,
+    lastStudyDate: '2025-10-15',
+  },
+  {
+    id: 'PAT-016',
+    dicomPatientId: 'patient016',
+    name: 'Jessica White',
+    age: 28,
+    gender: 'F',
+    issuer: 'HOSPITAL_A',
+    studiesCount: 1,
+    lastStudyDate: '2025-10-10',
+  },
+  {
+    id: 'PAT-017',
+    dicomPatientId: 'patient017',
+    name: 'Christopher Moore',
+    age: 49,
+    gender: 'M',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 4,
+    lastStudyDate: '2025-10-05',
+  },
+  {
+    id: 'PAT-018',
+    dicomPatientId: 'patient018',
+    name: 'Stephanie Hall',
+    age: 35,
+    gender: 'F',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 2,
+    lastStudyDate: '2025-09-30',
+  },
+  {
+    id: 'PAT-019',
+    dicomPatientId: 'patient019',
+    name: 'Daniel Young',
+    age: 44,
+    gender: 'M',
+    issuer: 'HOSPITAL_A',
+    studiesCount: 3,
+    lastStudyDate: '2025-09-25',
+  },
+  {
+    id: 'PAT-020',
+    dicomPatientId: 'patient020',
+    name: 'Megan King',
+    age: 31,
+    gender: 'F',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 1,
+    lastStudyDate: '2025-09-20',
+  },
+  {
+    id: 'PAT-021',
+    dicomPatientId: 'patient021',
+    name: 'Andrew Wright',
+    age: 56,
+    gender: 'M',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 6,
+    lastStudyDate: '2025-09-15',
+  },
+  {
+    id: 'PAT-022',
+    dicomPatientId: 'patient022',
+    name: 'Rachel Scott',
+    age: 39,
+    gender: 'F',
+    issuer: 'HOSPITAL_A',
+    studiesCount: 2,
+    lastStudyDate: '2025-09-10',
+  },
+  {
+    id: 'PAT-023',
+    dicomPatientId: 'patient023',
+    name: 'Joseph Adams',
+    age: 67,
+    gender: 'M',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 8,
+    lastStudyDate: '2025-09-05',
+  },
+  {
+    id: 'PAT-024',
+    dicomPatientId: 'patient024',
+    name: 'Nicole Baker',
+    age: 26,
+    gender: 'F',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 1,
+    lastStudyDate: '2025-08-30',
+  },
+  {
+    id: 'PAT-025',
+    dicomPatientId: 'patient025',
+    name: 'Ryan Nelson',
+    age: 43,
+    gender: 'M',
+    issuer: 'HOSPITAL_A',
+    studiesCount: 3,
+    lastStudyDate: '2025-08-25',
+  },
+  {
+    id: 'PAT-026',
+    dicomPatientId: 'patient026',
+    name: 'Ashley Carter',
+    age: 34,
+    gender: 'F',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 2,
+    lastStudyDate: '2025-08-20',
+  },
+  {
+    id: 'PAT-027',
+    dicomPatientId: 'patient027',
+    name: 'Brandon Mitchell',
+    age: 51,
+    gender: 'M',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 5,
+    lastStudyDate: '2025-08-15',
+  },
+  {
+    id: 'PAT-028',
+    dicomPatientId: 'patient028',
+    name: 'Kimberly Perez',
+    age: 40,
+    gender: 'F',
+    issuer: 'HOSPITAL_A',
+    studiesCount: 3,
+    lastStudyDate: '2025-08-10',
+  },
+  {
+    id: 'PAT-029',
+    dicomPatientId: 'patient029',
+    name: 'Justin Roberts',
+    age: 48,
+    gender: 'M',
+    issuer: 'HOSPITAL_B',
+    studiesCount: 4,
+    lastStudyDate: '2025-08-05',
+  },
+  {
+    id: 'PAT-030',
+    dicomPatientId: 'patient030',
+    name: 'Lauren Turner',
+    age: 30,
+    gender: 'F',
+    issuer: 'HOSPITAL_C',
+    studiesCount: 2,
+    lastStudyDate: '2025-07-30',
+  },
+]
 
-// Mock Study 데이터 (5개)
+// Mock Study 데이터 (20개)
 export const MOCK_STUDIES: Study[] = [
   {
     id: 'STU-001',
@@ -199,7 +359,7 @@ export const MOCK_STUDIES: Study[] = [
     studyDate: '2025-12-10',
     studyTime: '16:45:00',
     modality: 'US',
-    studyDescription: 'Abdominal Ultrasound',
+    studyDescription: 'Cardiac Ultrasound',
     seriesCount: 2,
     instancesCount: 50,
   },
@@ -215,9 +375,189 @@ export const MOCK_STUDIES: Study[] = [
     seriesCount: 3,
     instancesCount: 180,
   },
-];
+  {
+    id: 'STU-006',
+    studyInstanceUid: '1.2.840.113619.2.55.3.6',
+    patientId: 'PAT-001',
+    patientName: 'John Doe',
+    studyDate: '2025-11-15',
+    studyTime: '08:30:00',
+    modality: 'MR',
+    studyDescription: 'Spine MRI',
+    seriesCount: 5,
+    instancesCount: 250,
+  },
+  {
+    id: 'STU-007',
+    studyInstanceUid: '1.2.840.113619.2.55.3.7',
+    patientId: 'PAT-006',
+    patientName: 'Sarah Wilson',
+    studyDate: '2025-11-10',
+    studyTime: '13:00:00',
+    modality: 'CT',
+    studyDescription: 'Head CT',
+    seriesCount: 2,
+    instancesCount: 80,
+  },
+  {
+    id: 'STU-008',
+    studyInstanceUid: '1.2.840.113619.2.55.3.8',
+    patientId: 'PAT-007',
+    patientName: 'David Lee',
+    studyDate: '2025-11-05',
+    studyTime: '15:45:00',
+    modality: 'US',
+    studyDescription: 'Abdominal Ultrasound',
+    seriesCount: 3,
+    instancesCount: 60,
+  },
+  {
+    id: 'STU-009',
+    studyInstanceUid: '1.2.840.113619.2.55.3.9',
+    patientId: 'PAT-008',
+    patientName: 'Lisa Taylor',
+    studyDate: '2025-10-25',
+    studyTime: '10:00:00',
+    modality: 'XR',
+    studyDescription: 'Spine X-Ray',
+    seriesCount: 2,
+    instancesCount: 4,
+  },
+  {
+    id: 'STU-010',
+    studyInstanceUid: '1.2.840.113619.2.55.3.10',
+    patientId: 'PAT-009',
+    patientName: 'James Anderson',
+    studyDate: '2025-10-20',
+    studyTime: '09:30:00',
+    modality: 'MR',
+    studyDescription: 'Knee MRI',
+    seriesCount: 4,
+    instancesCount: 180,
+  },
+  {
+    id: 'STU-011',
+    studyInstanceUid: '1.2.840.113619.2.55.3.11',
+    patientId: 'PAT-010',
+    patientName: 'Michelle Martinez',
+    studyDate: '2025-10-15',
+    studyTime: '14:00:00',
+    modality: 'CT',
+    studyDescription: 'Pelvic CT',
+    seriesCount: 3,
+    instancesCount: 120,
+  },
+  {
+    id: 'STU-012',
+    studyInstanceUid: '1.2.840.113619.2.55.3.12',
+    patientId: 'PAT-011',
+    patientName: 'Kevin Park',
+    studyDate: '2025-10-10',
+    studyTime: '11:15:00',
+    modality: 'US',
+    studyDescription: 'Thyroid Ultrasound',
+    seriesCount: 2,
+    instancesCount: 30,
+  },
+  {
+    id: 'STU-013',
+    studyInstanceUid: '1.2.840.113619.2.55.3.13',
+    patientId: 'PAT-012',
+    patientName: 'Amanda Chen',
+    studyDate: '2025-10-05',
+    studyTime: '16:30:00',
+    modality: 'MR',
+    studyDescription: 'Shoulder MRI',
+    seriesCount: 3,
+    instancesCount: 150,
+  },
+  {
+    id: 'STU-014',
+    studyInstanceUid: '1.2.840.113619.2.55.3.14',
+    patientId: 'PAT-013',
+    patientName: 'Thomas Kim',
+    studyDate: '2025-09-28',
+    studyTime: '08:00:00',
+    modality: 'CT',
+    studyDescription: 'Chest CT with Contrast',
+    seriesCount: 4,
+    instancesCount: 200,
+  },
+  {
+    id: 'STU-015',
+    studyInstanceUid: '1.2.840.113619.2.55.3.15',
+    patientId: 'PAT-014',
+    patientName: 'Jennifer Lopez',
+    studyDate: '2025-09-20',
+    studyTime: '12:45:00',
+    modality: 'XR',
+    studyDescription: 'Hand X-Ray',
+    seriesCount: 1,
+    instancesCount: 3,
+  },
+  {
+    id: 'STU-016',
+    studyInstanceUid: '1.2.840.113619.2.55.3.16',
+    patientId: 'PAT-015',
+    patientName: 'William Garcia',
+    studyDate: '2025-09-15',
+    studyTime: '10:30:00',
+    modality: 'US',
+    studyDescription: 'Echocardiogram',
+    seriesCount: 4,
+    instancesCount: 100,
+  },
+  {
+    id: 'STU-017',
+    studyInstanceUid: '1.2.840.113619.2.55.3.17',
+    patientId: 'PAT-016',
+    patientName: 'Jessica White',
+    studyDate: '2025-09-10',
+    studyTime: '14:15:00',
+    modality: 'MR',
+    studyDescription: 'Lumbar Spine MRI',
+    seriesCount: 5,
+    instancesCount: 220,
+  },
+  {
+    id: 'STU-018',
+    studyInstanceUid: '1.2.840.113619.2.55.3.18',
+    patientId: 'PAT-017',
+    patientName: 'Christopher Moore',
+    studyDate: '2025-09-05',
+    studyTime: '09:45:00',
+    modality: 'CT',
+    studyDescription: 'Neck CT',
+    seriesCount: 2,
+    instancesCount: 90,
+  },
+  {
+    id: 'STU-019',
+    studyInstanceUid: '1.2.840.113619.2.55.3.19',
+    patientId: 'PAT-018',
+    patientName: 'Stephanie Hall',
+    studyDate: '2025-08-28',
+    studyTime: '15:00:00',
+    modality: 'XR',
+    studyDescription: 'Ankle X-Ray',
+    seriesCount: 2,
+    instancesCount: 4,
+  },
+  {
+    id: 'STU-020',
+    studyInstanceUid: '1.2.840.113619.2.55.3.20',
+    patientId: 'PAT-019',
+    patientName: 'Daniel Young',
+    studyDate: '2025-08-20',
+    studyTime: '11:30:00',
+    modality: 'US',
+    studyDescription: 'Renal Ultrasound',
+    seriesCount: 2,
+    instancesCount: 40,
+  },
+]
 
-// Mock Series 데이터 (3개)
+// Mock Series 데이터 (10개 - 다양한 Study에 연결)
 export const MOCK_SERIES: Series[] = [
   {
     id: 'SER-001',
@@ -246,7 +586,70 @@ export const MOCK_SERIES: Series[] = [
     seriesDescription: 'Sagittal',
     instancesCount: 50,
   },
-];
+  {
+    id: 'SER-004',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.2.1',
+    studyId: 'STU-002',
+    seriesNumber: 1,
+    modality: 'MR',
+    seriesDescription: 'T1 Weighted',
+    instancesCount: 50,
+  },
+  {
+    id: 'SER-005',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.2.2',
+    studyId: 'STU-002',
+    seriesNumber: 2,
+    modality: 'MR',
+    seriesDescription: 'T2 Weighted',
+    instancesCount: 50,
+  },
+  {
+    id: 'SER-006',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.2.3',
+    studyId: 'STU-002',
+    seriesNumber: 3,
+    modality: 'MR',
+    seriesDescription: 'FLAIR',
+    instancesCount: 50,
+  },
+  {
+    id: 'SER-007',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.2.4',
+    studyId: 'STU-002',
+    seriesNumber: 4,
+    modality: 'MR',
+    seriesDescription: 'DWI',
+    instancesCount: 50,
+  },
+  {
+    id: 'SER-008',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.4.1',
+    studyId: 'STU-004',
+    seriesNumber: 1,
+    modality: 'US',
+    seriesDescription: '4-Chamber View',
+    instancesCount: 25,
+  },
+  {
+    id: 'SER-009',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.4.2',
+    studyId: 'STU-004',
+    seriesNumber: 2,
+    modality: 'US',
+    seriesDescription: 'Parasternal Long Axis',
+    instancesCount: 25,
+  },
+  {
+    id: 'SER-010',
+    seriesInstanceUid: '1.2.840.113619.2.55.3.3.1',
+    studyId: 'STU-003',
+    seriesNumber: 1,
+    modality: 'XR',
+    seriesDescription: 'PA View',
+    instancesCount: 2,
+  },
+]
 
 // Mock Instance 데이터 (3개)
 export const MOCK_INSTANCES: Instance[] = [
@@ -271,4 +674,4 @@ export const MOCK_INSTANCES: Instance[] = [
     instanceNumber: 3,
     storageUri: 'seaweedfs://1,001234567892',
   },
-];
+]

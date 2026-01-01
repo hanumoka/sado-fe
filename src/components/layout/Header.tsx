@@ -1,7 +1,6 @@
-import { Menu, User, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useUIStore } from '@/stores/uiStore';
-import { useAuthStore } from '@/stores/authStore';
+import { Menu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useUIStore } from '@/stores/uiStore'
 
 /**
  * Header.tsx
@@ -9,22 +8,36 @@ import { useAuthStore } from '@/stores/authStore';
  * 상단 네비게이션 바
  *
  * 주요 기능:
- * 1. 햄버거 메뉴 (Sidebar 토글)
+ * 1. 햄버거 메뉴 (데스크톱: Sidebar 토글, 모바일: 드로어 열기)
  * 2. 로고
- * 3. 사용자 정보 표시
- * 4. 로그아웃 버튼
+ *
+ * Note: 인증/인가 기능은 POC 단계에서 제외됨
  */
 export default function Header() {
-  const { toggleSidebar } = useUIStore();
-  const { user, logout } = useAuthStore();
+  const { toggleSidebar, toggleMobileSidebar } = useUIStore()
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-50">
       <div className="flex items-center justify-between h-full px-4">
         {/* 좌측: 햄버거 메뉴 + 로고 */}
         <div className="flex items-center gap-4">
-          {/* 햄버거 메뉴 */}
-          <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+          {/* 데스크톱 햄버거 메뉴 (md 이상) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="hidden md:flex"
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
+
+          {/* 모바일 햄버거 메뉴 (md 미만) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleMobileSidebar}
+            className="md:hidden"
+          >
             <Menu className="h-6 w-6" />
           </Button>
 
@@ -37,28 +50,13 @@ export default function Header() {
           </div>
         </div>
 
-        {/* 우측: 사용자 정보 + 로그아웃 */}
+        {/* 우측: POC 표시 */}
         <div className="flex items-center gap-4">
-          {user ? (
-            <>
-              {/* 사용자 정보 */}
-              <div className="flex items-center gap-2 text-sm">
-                <User className="h-4 w-4 text-gray-600" />
-                <span className="text-gray-700">{user.name}</span>
-                <span className="text-gray-400">({user.role})</span>
-              </div>
-
-              {/* 로그아웃 버튼 */}
-              <Button variant="outline" size="sm" onClick={logout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                로그아웃
-              </Button>
-            </>
-          ) : (
-            <div className="text-sm text-gray-500">로그인 필요</div>
-          )}
+          <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+            POC Mode
+          </span>
         </div>
       </div>
     </header>
-  );
+  )
 }

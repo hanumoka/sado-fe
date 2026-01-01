@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Code } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, Calendar, Code } from 'lucide-react'
 
 /**
  * ComingSoonPage.tsx
@@ -13,12 +13,12 @@ import { ArrowLeft, Calendar, Code } from 'lucide-react';
  */
 
 interface ComingSoonPageProps {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  features: string[];
-  expectedWeek: string;
-  dependencies?: string[];
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  features: string[]
+  expectedWeek: string
+  dependencies?: string[]
 }
 
 export default function ComingSoonPage({
@@ -29,11 +29,11 @@ export default function ComingSoonPage({
   expectedWeek,
   dependencies = [],
 }: ComingSoonPageProps) {
-  const navigate = useNavigate();
+  const navigate = useNavigate()
 
   const handleBack = () => {
-    navigate('/');
-  };
+    navigate('/')
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -58,7 +58,9 @@ export default function ComingSoonPage({
                   준비 중 (Coming Soon)
                 </p>
                 <p className="text-sm text-yellow-700 mt-1">
-                  이 기능은 <span className="font-semibold">{expectedWeek}</span>에 구현 예정입니다
+                  이 기능은{' '}
+                  <span className="font-semibold">{expectedWeek}</span>에 구현
+                  예정입니다
                 </p>
               </div>
             </div>
@@ -111,9 +113,11 @@ export default function ComingSoonPage({
         {/* 추가 정보 */}
         <div className="mt-6 text-center text-sm text-gray-600">
           <p>현재 POC는 Phase 1 (Core PACS) 기능만 구현되어 있습니다.</p>
-          <p className="mt-1">Phase 2 (Admin) 기능은 Week 11-16에 구현 예정입니다.</p>
+          <p className="mt-1">
+            Phase 2 (Admin) 기능은 Week 11-16에 구현 예정입니다.
+          </p>
         </div>
       </div>
     </div>
-  );
+  )
 }

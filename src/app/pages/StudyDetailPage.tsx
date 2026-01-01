@@ -1,34 +1,101 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Eye } from 'lucide-react';
-import { MOCK_STUDIES, MOCK_SERIES } from '@/lib/mockData';
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowLeft, FileText } from 'lucide-react'
+import { fetchStudyById, fetchSeriesByStudyId } from '@/lib/services'
+import StudyMetadata from '@/features/study/components/StudyMetadata'
+import SeriesThumbnailGrid from '@/features/study/components/SeriesThumbnailGrid'
+import {
+  ErrorMessage,
+  CardSkeleton,
+  GridSkeleton,
+} from '@/components/common'
+import { Button } from '@/components/ui/button'
 
 /**
  * StudyDetailPage.tsx
  *
  * Study 상세 페이지
  *
- * 목적:
- * - Study 상세 정보 표시
- * - Series 목록 표시
- * - Series 클릭 → DICOM Viewer 이동
+ * 기능:
+ * - Study 상세 정보 표시 (StudyMetadata)
+ * - Series 썸네일 그리드 (SeriesThumbnailGrid)
+ * - 서비스 레이어를 통한 데이터 조회
  */
 export default function StudyDetailPage() {
-  const { studyId } = useParams<{ studyId: string }>();
-  const navigate = useNavigate();
+  const { studyId } = useParams<{ studyId: string }>()
+  const navigate = useNavigate()
 
-  // Mock 데이터에서 Study 찾기
-  const study = MOCK_STUDIES.find((s) => s.id === studyId);
+  // Study 정보 조회
+  const {
+    data: study,
+    isLoading: isStudyLoading,
+    error: studyError,
+    refetch: refetchStudy,
+  } = useQuery({
+    queryKey: ['study', studyId],
+    queryFn: () => fetchStudyById(studyId!),
+    enabled: !!studyId,
+    staleTime: 1000 * 60 * 5,
+  })
 
-  // Study에 속한 Series 찾기
-  const seriesList = MOCK_SERIES.filter((s) => s.studyId === studyId);
+  // Series 목록 조회
+  const {
+    data: seriesList,
+    isLoading: isSeriesLoading,
+    error: seriesError,
+    refetch: refetchSeries,
+  } = useQuery({
+    queryKey: ['series', studyId],
+    queryFn: () => fetchSeriesByStudyId(studyId!),
+    enabled: !!studyId,
+    staleTime: 1000 * 60 * 5,
+  })
 
   const handleBack = () => {
-    navigate(-1);
-  };
+    navigate(-1)
+  }
 
-  const handleViewSeries = (seriesId: string) => {
-    navigate(`/viewer/${seriesId}`);
-  };
+  const isLoading = isStudyLoading || isSeriesLoading
+  const error = studyError || seriesError
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        {/* 헤더 스켈레톤 */}
+        <div className="flex items-center gap-3">
+          <div className="animate-pulse h-9 w-24 bg-gray-200 rounded-md" />
+          <div className="animate-pulse h-8 w-8 bg-gray-200 rounded" />
+          <div className="space-y-2">
+            <div className="animate-pulse h-6 w-48 bg-gray-200 rounded" />
+            <div className="animate-pulse h-4 w-32 bg-gray-200 rounded" />
+          </div>
+        </div>
+
+        {/* 메타데이터 스켈레톤 */}
+        <CardSkeleton />
+
+        {/* 시리즈 그리드 스켈레톤 */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="animate-pulse h-6 w-32 bg-gray-200 rounded mb-4" />
+          <GridSkeleton items={4} columns={4} />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center">
+        <ErrorMessage
+          error={error}
+          onRetry={() => {
+            refetchStudy()
+            refetchSeries()
+          }}
+        />
+      </div>
+    )
+  }
 
   if (!study) {
     return (
@@ -36,15 +103,12 @@ export default function StudyDetailPage() {
         <div className="text-center">
           <FileText className="h-16 w-16 mx-auto mb-4 text-gray-400" />
           <p className="text-lg text-gray-600">Study를 찾을 수 없습니다</p>
-          <button
-            onClick={handleBack}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
+          <Button onClick={handleBack} className="mt-4">
             돌아가기
-          </button>
+          </Button>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -52,139 +116,43 @@ export default function StudyDetailPage() {
       {/* 페이지 헤더 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-medium">돌아가기</span>
-          </button>
-          <FileText className="h-8 w-8 text-blue-600" />
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Study 상세</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              {study.modality} - {study.studyDescription}
-            </p>
+          <Button variant="outline" size="sm" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            돌아가기
+          </Button>
+          <div className="flex items-center gap-3">
+            <FileText className="h-8 w-8 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Study 상세</h1>
+              <p className="text-sm text-gray-600">
+                {study.modality} - {study.studyDescription}
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Study 정보 카드 */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          Study 정보
-        </h2>
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <p className="text-sm text-gray-600">환자 이름</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.patientName}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Study Instance UID</p>
-            <p className="text-sm font-mono text-gray-900 truncate">
-              {study.studyInstanceUid}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">검사 날짜</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.studyDate}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">검사 시간</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.studyTime}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Modality</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.modality}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Study 설명</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.studyDescription}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Series 수</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.seriesCount}개
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Instance 수</p>
-            <p className="text-lg font-medium text-gray-900">
-              {study.instancesCount}개
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Study 메타데이터 */}
+      <StudyMetadata study={study} />
 
-      {/* Series 목록 */}
+      {/* Series 썸네일 그리드 */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">
-            Series 목록 ({seriesList.length})
+            Series 목록 ({seriesList?.length || 0})
           </h2>
           <p className="text-sm text-gray-600 mt-1">
             Series를 클릭하면 DICOM Viewer로 이동합니다
           </p>
         </div>
 
-        {seriesList.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-500">Series가 없습니다</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {seriesList.map((series) => (
-              <div
-                key={series.id}
-                onClick={() => handleViewSeries(series.id)}
-                className="p-6 hover:bg-gray-50 cursor-pointer transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {series.modality}
-                      </span>
-                      <span className="text-sm text-gray-600">
-                        Series #{series.seriesNumber}
-                      </span>
-                    </div>
-                    <p className="text-lg font-medium text-gray-900">
-                      {series.seriesDescription}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-1 font-mono">
-                      {series.seriesInstanceUid}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-2">
-                      {series.instancesCount}개 이미지
-                    </p>
-                  </div>
-                  <button
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleViewSeries(series.id);
-                    }}
-                  >
-                    <Eye className="h-4 w-4" />
-                    <span className="text-sm font-medium">뷰어 열기</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="p-6">
+          <SeriesThumbnailGrid
+            seriesList={seriesList || []}
+            studyId={studyId}
+          />
+        </div>
       </div>
     </div>
-  );
+  )
 }

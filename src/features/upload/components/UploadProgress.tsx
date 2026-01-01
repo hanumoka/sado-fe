@@ -1,5 +1,5 @@
-import { CheckCircle, XCircle, Loader2, FileText } from 'lucide-react';
-import type { UploadFile } from '../types/upload';
+import { CheckCircle, XCircle, Loader2, FileText } from 'lucide-react'
+import type { UploadFile } from '../types/upload'
 
 /**
  * UploadProgress.tsx
@@ -13,19 +13,19 @@ import type { UploadFile } from '../types/upload';
  */
 
 interface UploadProgressProps {
-  files: UploadFile[];
+  files: UploadFile[]
 }
 
 export default function UploadProgress({ files }: UploadProgressProps) {
   if (files.length === 0) {
-    return null;
+    return null
   }
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -33,9 +33,7 @@ export default function UploadProgress({ files }: UploadProgressProps) {
         <h3 className="text-lg font-semibold text-gray-900">
           업로드 진행 상황
         </h3>
-        <p className="text-sm text-gray-600 mt-1">
-          총 {files.length}개 파일
-        </p>
+        <p className="text-sm text-gray-600 mt-1">총 {files.length}개 파일</p>
       </div>
 
       <div className="divide-y divide-gray-200">
@@ -74,9 +72,7 @@ export default function UploadProgress({ files }: UploadProgressProps) {
                   <div className="mt-2">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs text-gray-600">
-                        {file.status === 'uploading'
-                          ? '업로드 중...'
-                          : '완료'}
+                        {file.status === 'uploading' ? '업로드 중...' : '완료'}
                       </span>
                       <span className="text-xs font-medium text-gray-900">
                         {file.progress}%
@@ -140,5 +136,5 @@ export default function UploadProgress({ files }: UploadProgressProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }

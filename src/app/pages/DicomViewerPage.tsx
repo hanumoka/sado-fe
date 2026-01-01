@@ -1,10 +1,14 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2 } from 'lucide-react';
-import ViewerToolbar from '@/features/dicom-viewer/components/ViewerToolbar';
-import DicomViewer from '@/features/dicom-viewer/components/DicomViewer';
-import { useInstances } from '@/features/dicom-viewer/hooks/useInstances';
-import type { ViewerTool, WindowLevelPreset } from '@/features/dicom-viewer/types/viewer';
+import { useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import ViewerToolbar from '@/features/dicom-viewer/components/ViewerToolbar'
+import DicomViewer from '@/features/dicom-viewer/components/DicomViewer'
+import { useInstances } from '@/features/dicom-viewer/hooks/useInstances'
+import { getErrorMessage } from '@/lib/errorMessages'
+import type {
+  ViewerTool,
+  WindowLevelPreset,
+} from '@/features/dicom-viewer/types/viewer'
 
 /**
  * DicomViewerPage.tsx
@@ -18,34 +22,34 @@ import type { ViewerTool, WindowLevelPreset } from '@/features/dicom-viewer/type
  * 4. URL 파라미터로 Series 선택
  */
 export default function DicomViewerPage() {
-  const { seriesId } = useParams<{ seriesId: string }>();
-  const navigate = useNavigate();
+  const { seriesId } = useParams<{ seriesId: string }>()
+  const navigate = useNavigate()
 
-  const [activeTool, setActiveTool] = useState<ViewerTool>('WindowLevel');
+  const [activeTool, setActiveTool] = useState<ViewerTool>('WindowLevel')
   const [windowLevelPreset, setWindowLevelPreset] =
-    useState<WindowLevelPreset>();
+    useState<WindowLevelPreset>()
 
   // TanStack Query Hook
-  const { data, isLoading, error } = useInstances(seriesId || '');
+  const { data, isLoading, error } = useInstances(seriesId || '')
 
   const handleToolChange = (tool: ViewerTool) => {
     if (tool === 'Reset') {
       // 초기화: Window/Level 리셋
-      setWindowLevelPreset(undefined);
-      setActiveTool('WindowLevel');
+      setWindowLevelPreset(undefined)
+      setActiveTool('WindowLevel')
     } else {
-      setActiveTool(tool);
+      setActiveTool(tool)
     }
-  };
+  }
 
   const handlePresetChange = (preset: WindowLevelPreset) => {
-    setWindowLevelPreset(preset);
-    setActiveTool('WindowLevel');
-  };
+    setWindowLevelPreset(preset)
+    setActiveTool('WindowLevel')
+  }
 
   const handleBack = () => {
-    navigate(-1);
-  };
+    navigate(-1)
+  }
 
   return (
     <div className="fixed inset-0 flex flex-col bg-black">
@@ -96,7 +100,7 @@ export default function DicomViewerPage() {
           <div className="absolute inset-0 flex items-center justify-center bg-black">
             <div className="text-center text-white">
               <p className="text-red-500 text-lg mb-2">오류 발생</p>
-              <p className="text-gray-400">{(error as Error).message}</p>
+              <p className="text-gray-400">{getErrorMessage(error)}</p>
             </div>
           </div>
         )}
@@ -104,6 +108,7 @@ export default function DicomViewerPage() {
         {data && !isLoading && !error && (
           <DicomViewer
             instances={data.instances}
+            series={data.series}
             activeTool={activeTool}
             windowLevelPreset={windowLevelPreset}
           />
@@ -136,5 +141,5 @@ export default function DicomViewerPage() {
         </div>
       )}
     </div>
-  );
+  )
 }

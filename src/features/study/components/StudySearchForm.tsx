@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Search, X } from 'lucide-react';
-import type { StudySearchParams } from '../types/study';
+import { useState } from 'react'
+import { Search, X } from 'lucide-react'
+import type { StudySearchParams } from '../types/study'
 
 /**
  * StudySearchForm.tsx
@@ -15,34 +15,34 @@ import type { StudySearchParams } from '../types/study';
  */
 
 interface StudySearchFormProps {
-  onSearch: (params: StudySearchParams) => void;
+  onSearch: (params: StudySearchParams) => void
 }
 
 export default function StudySearchForm({ onSearch }: StudySearchFormProps) {
-  const [patientName, setPatientName] = useState('');
-  const [studyDate, setStudyDate] = useState('');
-  const [modality, setModality] = useState<string>('ALL');
+  const [patientName, setPatientName] = useState('')
+  const [studyDate, setStudyDate] = useState('')
+  const [modality, setModality] = useState<string>('ALL')
 
   const handleSearch = () => {
     onSearch({
       patientName: patientName || undefined,
       studyDate: studyDate || undefined,
       modality: modality === 'ALL' ? undefined : modality,
-    });
-  };
+    })
+  }
 
   const handleReset = () => {
-    setPatientName('');
-    setStudyDate('');
-    setModality('ALL');
-    onSearch({});
-  };
+    setPatientName('')
+    setStudyDate('')
+    setModality('ALL')
+    onSearch({})
+  }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleSearch();
+      handleSearch()
     }
-  };
+  }
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -112,5 +112,5 @@ export default function StudySearchForm({ onSearch }: StudySearchFormProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }

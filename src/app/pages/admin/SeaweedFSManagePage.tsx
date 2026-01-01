@@ -1,5 +1,5 @@
-import { Layers } from 'lucide-react';
-import ComingSoonPage from './ComingSoonPage';
+import { Layers } from 'lucide-react'
+import ComingSoonPage from './ComingSoonPage'
 
 /**
  * SeaweedFSManagePage.tsx
@@ -29,5 +29,5 @@ export default function SeaweedFSManagePage() {
         'DELETE /api/admin/seaweedfs/volumes/:id - Volume 삭제',
       ]}
     />
-  );
+  )
 }

@@ -1,5 +1,5 @@
-import { Settings } from 'lucide-react';
-import ComingSoonPage from './ComingSoonPage';
+import { Settings } from 'lucide-react'
+import ComingSoonPage from './ComingSoonPage'
 
 /**
  * AdminDashboardPage.tsx
@@ -26,5 +26,5 @@ export default function AdminDashboardPage() {
         'GET /api/admin/metrics/summary - 요약 통계',
       ]}
     />
-  );
+  )
 }

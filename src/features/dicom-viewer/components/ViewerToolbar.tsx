@@ -6,9 +6,10 @@ import {
   Square,
   RotateCcw,
   Sun,
-} from 'lucide-react';
-import type { ViewerTool, WindowLevelPreset } from '../types/viewer';
-import { DEFAULT_PRESETS } from '../types/viewer';
+  type LucideIcon,
+} from 'lucide-react'
+import type { ViewerTool, WindowLevelPreset } from '../types/viewer'
+import { DEFAULT_PRESETS } from '../types/viewer'
 
 /**
  * ViewerToolbar.tsx
@@ -22,9 +23,9 @@ import { DEFAULT_PRESETS } from '../types/viewer';
  */
 
 interface ViewerToolbarProps {
-  activeTool: ViewerTool;
-  onToolChange: (tool: ViewerTool) => void;
-  onPresetChange: (preset: WindowLevelPreset) => void;
+  activeTool: ViewerTool
+  onToolChange: (tool: ViewerTool) => void
+  onPresetChange: (preset: WindowLevelPreset) => void
 }
 
 export default function ViewerToolbar({
@@ -32,7 +33,7 @@ export default function ViewerToolbar({
   onToolChange,
   onPresetChange,
 }: ViewerToolbarProps) {
-  const tools: Array<{ name: ViewerTool; icon: any; label: string }> = [
+  const tools: Array<{ name: ViewerTool; icon: LucideIcon; label: string }> = [
     { name: 'WindowLevel', icon: Sun, label: '창/레벨' },
     { name: 'Zoom', icon: Maximize2, label: '확대' },
     { name: 'Pan', icon: Move, label: '이동' },
@@ -40,7 +41,7 @@ export default function ViewerToolbar({
     { name: 'Angle', icon: Triangle, label: '각도' },
     { name: 'Rectangle', icon: Square, label: 'ROI' },
     { name: 'Reset', icon: RotateCcw, label: '초기화' },
-  ];
+  ]
 
   return (
     <div className="bg-gray-800 text-white p-4">
@@ -48,8 +49,8 @@ export default function ViewerToolbar({
         {/* 도구 버튼들 */}
         <div className="flex items-center gap-2">
           {tools.map((tool) => {
-            const Icon = tool.icon;
-            const isActive = activeTool === tool.name;
+            const Icon = tool.icon
+            const isActive = activeTool === tool.name
 
             return (
               <button
@@ -68,7 +69,7 @@ export default function ViewerToolbar({
                 <Icon className="h-4 w-4" />
                 <span className="text-sm font-medium">{tool.label}</span>
               </button>
-            );
+            )
           })}
         </div>
 
@@ -77,9 +78,9 @@ export default function ViewerToolbar({
           <span className="text-sm text-gray-400">Window/Level:</span>
           <select
             onChange={(e) => {
-              const preset = DEFAULT_PRESETS[parseInt(e.target.value)];
+              const preset = DEFAULT_PRESETS[parseInt(e.target.value)]
               if (preset) {
-                onPresetChange(preset);
+                onPresetChange(preset)
               }
             }}
             className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -94,5 +95,5 @@ export default function ViewerToolbar({
         </div>
       </div>
     </div>
-  );
+  )
 }

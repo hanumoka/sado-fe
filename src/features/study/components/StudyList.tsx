@@ -1,102 +1,180 @@
-import { useNavigate } from 'react-router-dom';
-import type { Study } from '../types/study';
+import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowUpDown, ArrowUp, ArrowDown, FileText } from 'lucide-react'
+import type { Study } from '../types/study'
+import Pagination from './Pagination'
+import { getModalityBadgeColor } from '@/constants/modality'
 
 /**
  * StudyList.tsx
  *
  * Study 목록 테이블 컴포넌트
  *
- * 목적:
+ * 기능:
  * - Study 데이터를 테이블로 표시
  * - 클릭 시 Study 상세 페이지로 이동
- * - 빈 상태 처리
+ * - 컬럼별 정렬
+ * - 페이지네이션
  */
 
 interface StudyListProps {
-  studies: Study[];
+  studies: Study[]
+  pageSize?: number
 }
 
-export default function StudyList({ studies }: StudyListProps) {
-  const navigate = useNavigate();
+type SortKey =
+  | 'patientName'
+  | 'studyDate'
+  | 'modality'
+  | 'studyDescription'
+  | 'seriesCount'
+  | 'instancesCount'
+type SortOrder = 'asc' | 'desc'
+
+interface SortConfig {
+  key: SortKey
+  order: SortOrder
+}
+
+const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'patientName', label: '환자 이름' },
+  { key: 'studyDate', label: '검사 날짜', className: 'w-28' },
+  { key: 'modality', label: 'Modality', className: 'w-24' },
+  { key: 'studyDescription', label: 'Study 설명' },
+  { key: 'seriesCount', label: 'Series', className: 'w-20' },
+  { key: 'instancesCount', label: 'Images', className: 'w-20' },
+]
+
+export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
+  const navigate = useNavigate()
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'studyDate',
+    order: 'desc',
+  })
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig((prev) => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }))
+    setCurrentPage(1)
+  }
+
+  const getSortIcon = (key: SortKey) => {
+    if (sortConfig.key !== key) {
+      return <ArrowUpDown className="h-4 w-4 text-gray-400" />
+    }
+    return sortConfig.order === 'asc' ? (
+      <ArrowUp className="h-4 w-4 text-blue-600" />
+    ) : (
+      <ArrowDown className="h-4 w-4 text-blue-600" />
+    )
+  }
+
+  const sortedStudies = useMemo(() => {
+    const sorted = [...studies].sort((a, b) => {
+      const { key, order } = sortConfig
+      let comparison = 0
+
+      switch (key) {
+        case 'patientName':
+        case 'modality':
+        case 'studyDescription':
+          comparison = a[key].localeCompare(b[key])
+          break
+        case 'seriesCount':
+        case 'instancesCount':
+          comparison = a[key] - b[key]
+          break
+        case 'studyDate':
+          comparison = new Date(a[key]).getTime() - new Date(b[key]).getTime()
+          break
+      }
+
+      return order === 'asc' ? comparison : -comparison
+    })
+
+    return sorted
+  }, [studies, sortConfig])
+
+  const totalPages = Math.ceil(sortedStudies.length / pageSize)
+  const paginatedStudies = sortedStudies.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  )
 
   const handleRowClick = (studyId: string) => {
-    // Week 4-5에서 구현 예정
-    navigate(`/studies/${studyId}`);
-  };
+    navigate(`/studies/${studyId}`)
+  }
 
-  // 빈 상태
   if (studies.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow p-12 text-center">
-        <p className="text-gray-500 text-lg">검색 결과가 없습니다</p>
-        <p className="text-gray-400 text-sm mt-2">
-          다른 검색 조건으로 시도해보세요
-        </p>
-      </div>
-    );
+    return null
   }
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
-          {/* 테이블 헤더 */}
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                환자 이름
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                #
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                검사 날짜
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                검사 시간
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Modality
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Study 설명
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Series 수
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Instance 수
-              </th>
+              {COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${column.className || ''}`}
+                  onClick={() => handleSort(column.key)}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{column.label}</span>
+                    {getSortIcon(column.key)}
+                  </div>
+                </th>
+              ))}
             </tr>
           </thead>
 
-          {/* 테이블 바디 */}
           <tbody className="bg-white divide-y divide-gray-200">
-            {studies.map((study) => (
+            {paginatedStudies.map((study, index) => (
               <tr
                 key={study.id}
                 onClick={() => handleRowClick(study.id)}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {study.patientName}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                  {(currentPage - 1) * pageSize + index + 1}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {study.studyDate}
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-gray-400" />
+                    {study.patientName}
+                  </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {study.studyTime}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <div>
+                    <div>{study.studyDate}</div>
+                    <div className="text-xs text-gray-500">
+                      {study.studyTime}
+                    </div>
+                  </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getModalityBadgeColor(study.modality)}`}
+                  >
                     {study.modality}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-500">
                   {study.studyDescription}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {study.seriesCount}개
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  {study.seriesCount}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {study.instancesCount}개
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  {study.instancesCount}
                 </td>
               </tr>
             ))}
@@ -104,12 +182,13 @@ export default function StudyList({ studies }: StudyListProps) {
         </table>
       </div>
 
-      {/* 결과 수 표시 */}
-      <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
-        <p className="text-sm text-gray-700">
-          총 <span className="font-medium">{studies.length}</span>개의 Study
-        </p>
-      </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={studies.length}
+        pageSize={pageSize}
+      />
     </div>
-  );
+  )
 }

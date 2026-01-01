@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Search, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import type { PatientSearchParams } from '../types/patient';
+import { useState } from 'react'
+import { Search, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import type { PatientSearchParams } from '../types/patient'
 
 /**
  * PatientSearchForm.tsx
@@ -15,36 +15,36 @@ import type { PatientSearchParams } from '../types/patient';
  */
 
 interface PatientSearchFormProps {
-  onSearch: (params: PatientSearchParams) => void;
+  onSearch: (params: PatientSearchParams) => void
 }
 
 export default function PatientSearchForm({
-                                            onSearch,
-                                          }: PatientSearchFormProps) {
-  const [name, setName] = useState('');
-  const [gender, setGender] = useState<'M' | 'F' | 'ALL'>('ALL');
+  onSearch,
+}: PatientSearchFormProps) {
+  const [name, setName] = useState('')
+  const [gender, setGender] = useState<'M' | 'F' | 'ALL'>('ALL')
 
   // 검색 실행
   const handleSearch = () => {
     onSearch({
       name: name || undefined,
       gender: gender === 'ALL' ? undefined : gender,
-    });
-  };
+    })
+  }
 
   // 초기화
   const handleReset = () => {
-    setName('');
-    setGender('ALL');
-    onSearch({});
-  };
+    setName('')
+    setGender('ALL')
+    onSearch({})
+  }
 
   // Enter 키 이벤트
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleSearch();
+      handleSearch()
     }
-  };
+  }
 
   return (
     <div className="bg-white p-4 rounded-lg shadow mb-6">
@@ -96,5 +96,5 @@ export default function PatientSearchForm({
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { apiConfig, mockConfig, uploadConfig } from '@/lib/config'
+import { apiConfig, uploadConfig } from '@/lib/config'
 import type { UploadFile, UploadResponse, UploadSummary } from '../types/upload'
 
 /**
@@ -50,38 +50,6 @@ export function useUploadDicom() {
       prev.map((file) => (file.id === fileId ? { ...file, progress } : file))
     )
   }, [])
-
-  /**
-   * Mock 업로드 시뮬레이션
-   */
-  const mockUpload = useCallback(
-    async (fileId: string): Promise<UploadResponse> => {
-      // 진행률 시뮬레이션
-      for (let i = 0; i <= 100; i += 20) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, mockConfig.uploadDelay / 5)
-        )
-        updateFileProgress(fileId, i)
-      }
-
-      // 성공률 시뮬레이션 (설정에서 가져옴)
-      const isSuccess = Math.random() < mockConfig.uploadSuccessRate
-
-      if (isSuccess) {
-        return {
-          success: true,
-          message: '업로드 성공',
-          instanceId: `INS-${uuidv4().slice(0, 8)}`,
-          studyInstanceUid: `1.2.840.113619.2.55.${Date.now()}`,
-          seriesInstanceUid: `1.2.840.113619.2.55.${Date.now()}.1`,
-          sopInstanceUid: `1.2.840.113619.2.55.${Date.now()}.1.1`,
-        }
-      } else {
-        throw new Error('Mock 업로드 실패 (시뮬레이션)')
-      }
-    },
-    [updateFileProgress]
-  )
 
   /**
    * 진행률 추적이 가능한 실제 업로드
@@ -159,15 +127,9 @@ export function useUploadDicom() {
       try {
         updateFileStatus(uploadFile.id, 'uploading', 0)
 
-        let response: UploadResponse
-
-        if (apiConfig.useMock) {
-          response = await mockUpload(uploadFile.id)
-        } else {
-          const formData = new FormData()
-          formData.append('file', uploadFile.file)
-          response = await realUpload(uploadFile.id, formData)
-        }
+        const formData = new FormData()
+        formData.append('file', uploadFile.file)
+        const response = await realUpload(uploadFile.id, formData)
 
         updateFileStatus(uploadFile.id, 'success', 100, undefined, response)
       } catch (error) {
@@ -176,7 +138,7 @@ export function useUploadDicom() {
         updateFileStatus(uploadFile.id, 'error', 0, errorMessage)
       }
     },
-    [updateFileStatus, mockUpload, realUpload]
+    [updateFileStatus, realUpload]
   )
 
   /**
@@ -218,7 +180,49 @@ export function useUploadDicom() {
    */
   const uploadDicomFiles = useCallback(
     async (files: File[]) => {
-      // 업로드 파일 목록 초기화
+      // ========== 업로드 정책 검증 ==========
+
+      // 1. 파일 개수 검증 (최대 100개)
+      if (files.length > uploadConfig.maxFileCount) {
+        alert(
+          `한 번에 최대 ${uploadConfig.maxFileCount}개의 파일만 업로드할 수 있습니다.\n` +
+            `현재 선택: ${files.length}개\n` +
+            `초과: ${files.length - uploadConfig.maxFileCount}개`
+        )
+        return
+      }
+
+      // 2. 개별 파일 크기 검증 (각 최대 500MB)
+      const oversizedFiles = files.filter(
+        (file) => file.size > uploadConfig.maxFileSize
+      )
+      if (oversizedFiles.length > 0) {
+        const maxSizeMB = Math.round(uploadConfig.maxFileSize / (1024 * 1024))
+        alert(
+          `다음 파일이 최대 크기(${maxSizeMB}MB)를 초과합니다:\n` +
+            oversizedFiles
+              .map((f) => `- ${f.name} (${Math.round(f.size / (1024 * 1024))}MB)`)
+              .join('\n')
+        )
+        return
+      }
+
+      // 3. 전체 크기 검증 (최대 2GB)
+      const totalSize = files.reduce((acc, file) => acc + file.size, 0)
+      if (totalSize > uploadConfig.maxTotalSize) {
+        const totalSizeMB = Math.round(totalSize / (1024 * 1024))
+        const maxTotalSizeMB = Math.round(
+          uploadConfig.maxTotalSize / (1024 * 1024)
+        )
+        alert(
+          `전체 파일 크기가 최대 크기(${maxTotalSizeMB}MB)를 초과합니다.\n` +
+            `현재 크기: ${totalSizeMB}MB\n` +
+            `초과: ${totalSizeMB - maxTotalSizeMB}MB`
+        )
+        return
+      }
+
+      // ========== 업로드 파일 목록 초기화 ==========
       const newUploadFiles: UploadFile[] = files.map((file) => ({
         file,
         id: uuidv4(),

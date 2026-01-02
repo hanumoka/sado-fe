@@ -43,4 +43,10 @@ export const uploadConfig = {
 
   /** 최대 파일 크기 (bytes) - 500MB */
   maxFileSize: 500 * 1024 * 1024,
+
+  /** 한 번에 최대 업로드 가능한 파일 개수 */
+  maxFileCount: 100,
+
+  /** 한 번 요청의 최대 총 크기 (bytes) - 2GB */
+  maxTotalSize: 2 * 1024 * 1024 * 1024,
 } as const

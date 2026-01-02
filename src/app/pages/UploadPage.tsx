@@ -55,6 +55,9 @@ export default function UploadPage() {
           <li>DICOM 파일(.dcm, .dicom, 확장자 없음)을 업로드할 수 있습니다</li>
           <li>파일을 드래그 앤 드롭하거나 클릭하여 선택하세요</li>
           <li>폴더를 선택하면 폴더 내 모든 DICOM 파일이 업로드됩니다</li>
+          <li className="font-semibold">
+            한 번에 최대 100개, 총 2GB까지 업로드 가능 (개별 파일 최대 500MB)
+          </li>
           <li>최대 3개 파일이 동시에 업로드됩니다</li>
         </ul>
       </div>

@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, FileText, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { uploadConfig } from '@/lib/config'
 
 /**
  * UploadDropzone.tsx
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button'
  * 기능:
  * - 파일/폴더 드래그 앤 드롭
  * - 클릭하여 파일 선택
- * - .dcm 파일만 허용 (확장자 없는 파일도 허용)
+ * - .dcm, .dicom, 확장자 없는 DICOM 파일 허용
  * - 다중 파일 업로드 지원
  * - 폴더 업로드 지원
  */
@@ -30,8 +31,19 @@ export default function UploadDropzone({
   const filterDicomFiles = (files: File[]): File[] => {
     return files.filter((file) => {
       const name = file.name.toLowerCase()
-      // .dcm 파일 또는 확장자 없는 파일 (DICOM은 확장자가 없을 수 있음)
-      return name.endsWith('.dcm') || !name.includes('.')
+
+      // 1. 허용 확장자 체크 (.dcm, .dicom)
+      const hasAllowedExtension = uploadConfig.allowedExtensions.some((ext) =>
+        name.endsWith(ext)
+      )
+      if (hasAllowedExtension) return true
+
+      // 2. 확장자 없는 파일 (숨김 파일 제외)
+      const hasNoExtension =
+        !name.includes('.') || (name.lastIndexOf('.') === 0 && name.length > 1)
+      if (hasNoExtension && !name.startsWith('.')) return true
+
+      return false
     })
   }
 
@@ -49,8 +61,8 @@ export default function UploadDropzone({
     useDropzone({
       onDrop,
       accept: {
-        'application/dicom': ['.dcm'],
-        'application/octet-stream': ['.dcm', ''],
+        'application/dicom': ['.dcm', '.dicom'],
+        'application/octet-stream': ['.dcm', '.dicom', ''],
       },
       disabled,
       multiple: true,
@@ -117,7 +129,7 @@ export default function UploadDropzone({
               <>
                 <FileText className="h-16 w-16 text-red-500" />
                 <p className="text-lg font-medium text-red-700">
-                  .dcm 파일만 업로드 가능합니다
+                  DICOM 파일(.dcm, .dicom, 확장자 없음)만 업로드 가능합니다
                 </p>
               </>
             ) : (
@@ -139,13 +151,13 @@ export default function UploadDropzone({
                   DICOM 파일을 드래그하거나 클릭하여 선택하세요
                 </p>
                 <p className="text-sm text-gray-500 mt-2">
-                  .dcm 파일 또는 폴더를 선택할 수 있습니다 (다중 선택 가능)
+                  .dcm, .dicom 파일 또는 폴더를 선택할 수 있습니다 (다중 선택 가능)
                 </p>
               </div>
               <div className="flex gap-4 mt-4">
                 <div className="bg-blue-100 px-4 py-2 rounded-md">
                   <p className="text-sm font-medium text-blue-800">
-                    지원 형식: .dcm
+                    지원 형식: .dcm, .dicom, 확장자 없음
                   </p>
                 </div>
                 <div className="bg-green-100 px-4 py-2 rounded-md">

@@ -52,7 +52,7 @@ export default function UploadPage() {
           업로드 안내
         </h3>
         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-          <li>DICOM 파일(.dcm)만 업로드 가능합니다</li>
+          <li>DICOM 파일(.dcm, .dicom, 확장자 없음)을 업로드할 수 있습니다</li>
           <li>파일을 드래그 앤 드롭하거나 클릭하여 선택하세요</li>
           <li>폴더를 선택하면 폴더 내 모든 DICOM 파일이 업로드됩니다</li>
           <li>최대 3개 파일이 동시에 업로드됩니다</li>

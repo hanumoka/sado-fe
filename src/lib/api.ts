@@ -1,4 +1,4 @@
-import { ApiError, ErrorCodes } from './errors'
+import { ApiError, ErrorCodes } from './apiErrors'
 import { apiConfig } from './config'
 
 /**
@@ -215,4 +215,4 @@ export const api = {
 }
 
 // ApiError, ErrorCodes를 함께 export하여 사용 편의성 제공
-export { ApiError, ErrorCodes, isApiError } from './errors'
+export { ApiError, ErrorCodes, isApiError } from './apiErrors'

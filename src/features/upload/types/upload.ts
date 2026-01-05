@@ -56,3 +56,27 @@ export interface UploadSummary {
   startTime?: Date // 시작 시간
   endTime?: Date // 종료 시간
 }
+
+/**
+ * 프리뷰 파일 정보 (업로드 전 상태)
+ *
+ * 폴더 선택 시 업로드 전에 파일 목록을 미리 보여주기 위한 타입
+ */
+export interface PreviewFile {
+  id: string // 고유 ID (uuid)
+  file: File // 원본 File 객체
+  name: string // 파일명
+  size: number // 파일 크기 (bytes)
+  relativePath: string // 폴더 내 상대 경로
+  selected: boolean // 선택 여부 (기본값: true)
+}
+
+/**
+ * 프리뷰 요약 정보
+ */
+export interface PreviewSummary {
+  totalFiles: number // 전체 감지된 파일 수
+  selectedFiles: number // 선택된 파일 수
+  totalSize: number // 전체 크기 (bytes)
+  selectedSize: number // 선택된 파일 크기 (bytes)
+}

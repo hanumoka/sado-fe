@@ -6,6 +6,7 @@ import StudyListPage from '@/app/pages/StudyListPage'
 import StudyDetailPage from '@/app/pages/StudyDetailPage'
 import UploadPage from '@/app/pages/UploadPage'
 import DicomViewerPage from '@/app/pages/DicomViewerPage'
+import MultiSlotViewerPage from '@/app/pages/MultiSlotViewerPage'
 import NotFoundPage from '@/app/pages/NotFoundPage'
 import SeaweedFSManagePage from '@/app/pages/admin/SeaweedFSManagePage'
 import StorageMonitoringPage from '@/app/pages/admin/StorageMonitoringPage'
@@ -49,6 +50,9 @@ export default function Router() {
 
         {/* DICOM Viewer (Full Screen - Layout 밖) */}
         <Route path="/viewer/:studyInstanceUid/:seriesInstanceUid" element={<DicomViewerPage />} />
+
+        {/* Multi-Slot DICOM Viewer (Full Screen - Layout 밖) */}
+        <Route path="/multi-viewer" element={<MultiSlotViewerPage />} />
 
         {/* 404 Not Found */}
         <Route path="*" element={<NotFoundPage />} />

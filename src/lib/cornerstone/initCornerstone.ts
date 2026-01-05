@@ -5,12 +5,18 @@
  *
  * 주요 기능:
  * 1. Cornerstone Core 초기화
- * 2. DICOM Image Loader 등록 (WADO-RS/WADO-URI)
+ * 2. DICOM Image Loader 등록 (WADO-RS/WADO-URI/WADO-RS Rendered)
  * 3. Tools 초기화
+ *
+ * 등록되는 Image Loader:
+ * - wadouri: WADO-URI 프로토콜 (레거시)
+ * - wadors: WADO-RS 프로토콜 (표준 DICOMweb)
+ * - wadors-rendered: WADO-RS Rendered API (멀티 슬롯 뷰어용 커스텀 로더)
  */
 import * as cornerstone from '@cornerstonejs/core'
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
+import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
 
 let initialized = false
 
@@ -40,6 +46,9 @@ export async function initCornerstone(): Promise<void> {
     // wadouri, wadors 로더를 Cornerstone에 등록
     dicomImageLoader.wadouri.register()
     dicomImageLoader.wadors.register()
+
+    // 3-1. WADO-RS Rendered 커스텀 로더 등록 (멀티 슬롯 뷰어용)
+    registerWadoRsRenderedLoader()
 
     // 4. Cornerstone Tools 초기화
     await cornerstoneTools.init()

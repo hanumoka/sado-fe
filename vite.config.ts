@@ -18,16 +18,13 @@ export default defineConfig({
     port: 10300,
     host: true,
     proxy: {
-      // Gateway API (REST)
-      '/api': {
-        target: 'http://localhost:10200',
-        changeOrigin: true,
-      },
-      // MiniPACS DICOMweb API (QIDO-RS, WADO-RS)
+      // DICOMweb Standard API (QIDO-RS, WADO-RS, STOW-RS)
       '/dicomweb': {
         target: 'http://localhost:10201',
         changeOrigin: true,
       },
+      // Note: Gateway API disabled for POC (no /api proxy)
+      // Admin features (metrics, tiering) are disabled in POC phase
     },
   },
   worker: {
@@ -38,6 +35,9 @@ export default defineConfig({
       'globalthis',       // CommonJS polyfill (mini-pacs-poc 검증)
       '@kitware/vtk.js',  // vtk.js 사전 번들링 (mini-pacs-poc 검증)
       'dicom-parser',     // Cornerstone3D 권장 의존성
+    ],
+    exclude: [
+      '@cornerstonejs/dicom-image-loader', // Web Worker 포함으로 인한 Vite 최적화 제외
     ],
     esbuildOptions: {
       target: 'esnext',

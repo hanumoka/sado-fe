@@ -4,7 +4,7 @@
  * 에러 메시지 헬퍼 함수
  */
 
-import { ErrorCodes, isApiError, type ErrorCode } from './errors'
+import { ErrorCodes, isApiError, type ErrorCode } from './apiErrors'
 
 /**
  * 에러 코드별 사용자 친화적 메시지 매핑

@@ -4,14 +4,20 @@
  * 환경 변수 및 설정 중앙 관리
  *
  * 모든 환경 변수 접근은 이 파일을 통해 수행
+ *
+ * POC 단계: DICOMweb 표준 API만 사용, Gateway API는 비활성화
  */
 
 /**
  * API 설정
+ *
+ * POC 단계: DICOMweb 표준 API만 사용
+ * - baseUrl을 빈 문자열로 설정하여 상대 경로(/dicomweb) 사용
+ * - Vite proxy를 통해 /dicomweb → http://localhost:10201 로 프록시
  */
 export const apiConfig = {
-  /** API 서버 Base URL */
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:10200',
+  /** API 서버 Base URL - 빈 문자열 (상대 경로 사용) */
+  baseUrl: '',
 
   /** API 요청 타임아웃 (ms) */
   timeout: 30000,

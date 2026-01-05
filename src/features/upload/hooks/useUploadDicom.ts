@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { apiConfig, uploadConfig } from '@/lib/config'
+import { uploadConfig } from '@/lib/config'
+import { storeInstance } from '@/lib/services/dicomWebService'
 import type { UploadFile, UploadResponse, UploadSummary } from '../types/upload'
 
 /**
@@ -52,84 +53,39 @@ export function useUploadDicom() {
   }, [])
 
   /**
-   * 진행률 추적이 가능한 실제 업로드
+   * 실제 업로드 (STOW-RS 사용)
    */
   const realUpload = useCallback(
-    (fileId: string, formData: FormData): Promise<UploadResponse> => {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const progress = Math.round((event.loaded / event.total) * 100)
-            updateFileProgress(fileId, progress)
-          }
-        })
-
-        xhr.addEventListener('load', () => {
-          // 상태 코드별 처리
-          switch (xhr.status) {
-            case 200: // OK - 파일 업데이트
-            case 201: // Created - 파일 생성
-              try {
-                const response: UploadResponse = JSON.parse(xhr.responseText)
-                resolve(response)
-              } catch {
-                reject(new Error('응답 파싱 실패'))
-              }
-              break
-            case 409: // Conflict - 중복 파일
-              reject(new Error('이미 존재하는 파일입니다'))
-              break
-            case 413: // Payload Too Large - 파일 크기 초과
-              reject(new Error('파일 크기가 너무 큽니다'))
-              break
-            case 415: // Unsupported Media Type - DICOM 형식 아님
-              reject(new Error('지원하지 않는 파일 형식입니다'))
-              break
-            case 422: // Unprocessable Entity - 잘못된 DICOM
-              reject(new Error('유효하지 않은 DICOM 파일입니다'))
-              break
-            case 429: // Too Many Requests
-              reject(
-                new Error('요청이 너무 많습니다. 잠시 후 다시 시도해주세요')
-              )
-              break
-            default:
-              if (xhr.status >= 400 && xhr.status < 500) {
-                reject(new Error(`클라이언트 오류: ${xhr.status}`))
-              } else if (xhr.status >= 500) {
-                reject(new Error(`서버 오류: ${xhr.status}`))
-              } else {
-                reject(new Error(`예상치 못한 응답: ${xhr.status}`))
-              }
-          }
-        })
-
-        xhr.addEventListener('error', () => reject(new Error('네트워크 오류')))
-        xhr.addEventListener('timeout', () =>
-          reject(new Error('요청 시간 초과'))
-        )
-
-        xhr.open('POST', `${apiConfig.baseUrl}/api/instances/upload`)
-        xhr.timeout = apiConfig.uploadTimeout
-        xhr.send(formData)
+    async (fileId: string, file: File): Promise<UploadResponse> => {
+      const result = await storeInstance(file, (progress) => {
+        updateFileProgress(fileId, progress)
       })
+
+      if (result.success) {
+        // 성공
+        return {
+          success: true,
+          studyInstanceUid: result.studyInstanceUid,
+          seriesInstanceUid: result.seriesInstanceUid,
+          sopInstanceUid: result.sopInstanceUid,
+        }
+      } else {
+        // 에러 (409, 413, 415, 422)
+        throw new Error(result.error || '업로드 실패')
+      }
     },
     [updateFileProgress]
   )
 
   /**
-   * 단일 파일 업로드
+   * 단일 파일 업로드 (STOW-RS)
    */
   const uploadSingleFile = useCallback(
     async (uploadFile: UploadFile): Promise<void> => {
       try {
         updateFileStatus(uploadFile.id, 'uploading', 0)
 
-        const formData = new FormData()
-        formData.append('file', uploadFile.file)
-        const response = await realUpload(uploadFile.id, formData)
+        const response = await realUpload(uploadFile.id, uploadFile.file)
 
         updateFileStatus(uploadFile.id, 'success', 100, undefined, response)
       } catch (error) {

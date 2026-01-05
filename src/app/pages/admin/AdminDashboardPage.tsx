@@ -3,133 +3,143 @@
  *
  * Admin Dashboard 메인 페이지
  *
- * 기능:
- * - DICOM 엔티티 통계 (환자/Study/Series/Instance)
- * - 스토리지 사용량 시각화
- * - Storage Tier 분포 차트
+ * POC 단계: Admin 기능은 DICOMweb 표준 API로 제공되지 않으므로 비활성화
+ * 핵심 PACS 기능(Patients, Studies, Upload, Viewer)만 사용 가능
  */
 
-import { useQuery } from '@tanstack/react-query'
-import { Users, FileText, Layers, Image } from 'lucide-react'
-import { fetchDashboardSummary, fetchSeaweedFSCapacity } from '@/lib/services/adminService'
-import StatCard from '@/components/admin/StatCard'
-import StorageUsageCard from '@/components/admin/StorageUsageCard'
-import SeaweedFSCapacityCard from '@/components/admin/SeaweedFSCapacityCard'
-import TierDistributionChart from '@/components/charts/TierDistributionChart'
-import { ErrorMessage, LoadingSpinner } from '@/components/common'
+import { Link } from 'react-router-dom'
+import { Users, FileText, Upload, Eye, AlertCircle } from 'lucide-react'
 
 /**
- * Admin Dashboard 메인 페이지
+ * Admin Dashboard 메인 페이지 (POC - 기능 비활성화)
  */
 export default function AdminDashboardPage() {
-  // Dashboard 통계 조회 (30초마다 자동 갱신)
-  const {
-    data: summary,
-    isLoading: isLoadingSummary,
-    error: summaryError,
-    refetch: refetchSummary,
-  } = useQuery({
-    queryKey: ['admin', 'dashboard', 'summary'],
-    queryFn: fetchDashboardSummary,
-    refetchInterval: 30000, // 30초 자동 갱신
-    staleTime: 30000, // refetchInterval과 일치 - 불필요한 요청 방지
-    retry: false, // 재시도 안 함 - 에러 즉시 표시
-  })
-
-  // SeaweedFS 물리적 용량 조회 (30초 자동 갱신)
-  const {
-    data: seaweedfsCapacity,
-    isLoading: isLoadingSeaweedFS,
-    error: seaweedfsError,
-    refetch: refetchSeaweedFS,
-  } = useQuery({
-    queryKey: ['admin', 'seaweedfs', 'capacity'],
-    queryFn: fetchSeaweedFSCapacity,
-    refetchInterval: 30000,
-    staleTime: 30000,
-    retry: false,
-  })
-
-  // 전체 로딩 상태
-  const isLoading = isLoadingSummary || isLoadingSeaweedFS
-  // 전체 에러 상태
-  const error = summaryError || seaweedfsError
-  // 전체 재조회
-  const refetch = () => {
-    refetchSummary()
-    refetchSeaweedFS()
-  }
-
-  // 로딩 상태
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner />
-      </div>
-    )
-  }
-
-  // 에러 상태
-  if (error || !summary) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <ErrorMessage error={error} onRetry={refetch} />
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900">SADO PACS - POC Dashboard</h1>
         <p className="text-sm text-gray-600 mt-1">
-          시스템 전체 상태 및 스토리지 사용량 모니터링
+          DICOMweb 표준 API 기반 PACS 시스템
         </p>
       </div>
 
-      {/* DICOM 엔티티 통계 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Users}
-          title="총 환자 수"
-          value={summary.totalPatients}
-          iconColor="text-blue-600"
-          iconBgColor="bg-blue-100"
-        />
-        <StatCard
-          icon={FileText}
-          title="총 Study 수"
-          value={summary.totalStudies}
-          iconColor="text-green-600"
-          iconBgColor="bg-green-100"
-        />
-        <StatCard
-          icon={Layers}
-          title="총 Series 수"
-          value={summary.totalSeries}
-          iconColor="text-purple-600"
-          iconBgColor="bg-purple-100"
-        />
-        <StatCard
-          icon={Image}
-          title="총 Instance 수"
-          value={summary.totalInstances}
-          iconColor="text-orange-600"
-          iconBgColor="bg-orange-100"
-        />
+      {/* POC 공지 */}
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+        <div className="flex items-start">
+          <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5" />
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-yellow-800">POC 단계 안내</h3>
+            <div className="mt-2 text-sm text-yellow-700">
+              <p>현재 POC 단계에서는 DICOMweb 표준 API만 사용합니다.</p>
+              <p className="mt-1">
+                Admin 기능 (Dashboard 통계, Storage 모니터링, Tiering 관리)은 Gateway API가 필요하므로 비활성화되었습니다.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 스토리지 사용량 */}
-      <StorageUsageCard summary={summary.storageSummary} />
+      {/* 핵심 PACS 기능 링크 */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">사용 가능한 기능</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Patients */}
+          <Link
+            to="/patients"
+            className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <Users className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">환자 목록</h3>
+                <p className="text-sm text-gray-500 mt-1">QIDO-RS 조회</p>
+              </div>
+            </div>
+          </Link>
 
-      {/* SeaweedFS 물리적 스토리지 용량 */}
-      {seaweedfsCapacity && (
-        <SeaweedFSCapacityCard capacity={seaweedfsCapacity} />
-      )}
+          {/* Studies */}
+          <Link
+            to="/studies"
+            className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-green-100 rounded-lg">
+                <FileText className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Study 목록</h3>
+                <p className="text-sm text-gray-500 mt-1">QIDO-RS 조회</p>
+              </div>
+            </div>
+          </Link>
 
-      {/* Tier 분포 차트 */}
-      <TierDistributionChart distribution={summary.tierDistribution} />
+          {/* Upload */}
+          <Link
+            to="/upload"
+            className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <Upload className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">파일 업로드</h3>
+                <p className="text-sm text-gray-500 mt-1">STOW-RS 업로드</p>
+              </div>
+            </div>
+          </Link>
+
+          {/* Viewer */}
+          <Link
+            to="/studies"
+            className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-orange-100 rounded-lg">
+                <Eye className="h-6 w-6 text-orange-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">DICOM 뷰어</h3>
+                <p className="text-sm text-gray-500 mt-1">WADO-RS Rendered</p>
+              </div>
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* DICOMweb API 정보 */}
+      <div className="bg-gray-50 p-6 rounded-lg">
+        <h3 className="font-semibold text-gray-900 mb-3">DICOMweb 표준 API 사용</h3>
+        <div className="space-y-2 text-sm text-gray-700">
+          <div className="flex items-start">
+            <span className="font-medium w-32">QIDO-RS:</span>
+            <span>Study, Series, Instance 검색 및 조회</span>
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-32">WADO-RS:</span>
+            <span>DICOM 이미지 프레임 렌더링 (멀티 슬롯 뷰어)</span>
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-32">STOW-RS:</span>
+            <span>DICOM 파일 업로드</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 비활성화된 기능 안내 */}
+      <div className="bg-gray-50 p-6 rounded-lg">
+        <h3 className="font-semibold text-gray-900 mb-3">비활성화된 기능 (Gateway API 필요)</h3>
+        <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+          <li>Dashboard 통계 (환자/Study/Series/Instance 수)</li>
+          <li>스토리지 사용량 모니터링</li>
+          <li>Storage Tier 분포 차트</li>
+          <li>SeaweedFS 용량 관리</li>
+          <li>Tiering 정책 관리</li>
+        </ul>
+      </div>
     </div>
   )
 }

@@ -1,11 +1,14 @@
+import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Upload as UploadIcon, ArrowRight } from 'lucide-react'
 import UploadDropzone from '@/features/upload/components/UploadDropzone'
 import UploadProgress from '@/features/upload/components/UploadProgress'
 import UploadResult from '@/features/upload/components/UploadResult'
+import FilePreview from '@/features/upload/components/FilePreview'
 import { useUploadDicom } from '@/features/upload/hooks/useUploadDicom'
 import { PageHeader } from '@/components/common'
 import { Button } from '@/components/ui/button'
+import type { PreviewFile } from '@/features/upload/types/upload'
 
 /**
  * UploadPage.tsx
@@ -29,9 +32,53 @@ export default function UploadPage() {
     retryFailed,
   } = useUploadDicom()
 
-  const handleFilesSelected = (files: File[]) => {
-    uploadDicomFiles(files)
-  }
+  // 프리뷰 모드 상태
+  const [previewFiles, setPreviewFiles] = useState<PreviewFile[]>([])
+  const [isPreviewMode, setIsPreviewMode] = useState(false)
+
+  // 파일 선택 시 프리뷰 모드로 전환
+  const handleFilesSelected = useCallback((files: File[]) => {
+    const preview: PreviewFile[] = files.map((file) => ({
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      size: file.size,
+      relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+      selected: true,
+    }))
+    setPreviewFiles(preview)
+    setIsPreviewMode(true)
+  }, [])
+
+  // 개별 파일 선택/해제 토글
+  const handleToggleFile = useCallback((fileId: string) => {
+    setPreviewFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, selected: !f.selected } : f))
+    )
+  }, [])
+
+  // 전체 선택
+  const handleSelectAll = useCallback(() => {
+    setPreviewFiles((prev) => prev.map((f) => ({ ...f, selected: true })))
+  }, [])
+
+  // 전체 해제
+  const handleDeselectAll = useCallback(() => {
+    setPreviewFiles((prev) => prev.map((f) => ({ ...f, selected: false })))
+  }, [])
+
+  // 프리뷰 확인 → 업로드 시작
+  const handlePreviewConfirm = useCallback((selectedFiles: File[]) => {
+    setIsPreviewMode(false)
+    setPreviewFiles([])
+    uploadDicomFiles(selectedFiles)
+  }, [uploadDicomFiles])
+
+  // 프리뷰 취소
+  const handlePreviewCancel = useCallback(() => {
+    setIsPreviewMode(false)
+    setPreviewFiles([])
+  }, [])
 
   const hasFiles = uploadFiles.length > 0
   const hasFailedFiles = uploadFiles.some((f) => f.status === 'error')
@@ -62,8 +109,20 @@ export default function UploadPage() {
         </ul>
       </div>
 
-      {/* 업로드 영역 (업로드 중이 아닐 때만 표시) */}
-      {!isUploading && !isComplete && (
+      {/* 파일 프리뷰 (폴더 선택 후) */}
+      {isPreviewMode && (
+        <FilePreview
+          files={previewFiles}
+          onConfirm={handlePreviewConfirm}
+          onCancel={handlePreviewCancel}
+          onToggleFile={handleToggleFile}
+          onSelectAll={handleSelectAll}
+          onDeselectAll={handleDeselectAll}
+        />
+      )}
+
+      {/* 업로드 영역 (프리뷰 모드, 업로드 중, 완료가 아닐 때만 표시) */}
+      {!isPreviewMode && !isUploading && !isComplete && (
         <UploadDropzone
           onFilesSelected={handleFilesSelected}
           disabled={isUploading}

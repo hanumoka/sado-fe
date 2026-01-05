@@ -404,3 +404,219 @@ export function getWadoUriUrl(
   })
   return `${DICOMWEB_BASE_URL}/wado?${params}`
 }
+
+// ============================================================
+// WADO-RS Rendered: Multi-Slot Viewer Support
+// ============================================================
+
+/**
+ * WADO-RS Rendered: 특정 프레임의 렌더링된 이미지 URL 생성
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumber 프레임 번호 (1-based)
+ * @returns Rendered image URL
+ */
+export function getRenderedFrameUrl(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumber: number
+): string {
+  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
+}
+
+/**
+ * WADO-RS Rendered: 렌더링된 프레임 이미지 조회
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumber 프레임 번호 (1-based)
+ * @returns Image Blob
+ */
+export async function getRenderedFrame(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumber: number
+): Promise<Blob> {
+  const url = getRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+
+  const response = await fetch(url, {
+    headers: {
+      'Accept': 'image/jpeg, image/png',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`WADO-RS getRenderedFrame failed: ${response.status}`)
+  }
+
+  return response.blob()
+}
+
+/**
+ * WADO-RS: 특정 프레임의 DICOM 데이터 URL 생성
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumber 프레임 번호 (1-based)
+ * @returns Frame URL
+ */
+export function getFrameUrl(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumber: number
+): string {
+  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+}
+
+/**
+ * WADO-RS: 특정 프레임 조회
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumber 프레임 번호 (1-based)
+ * @returns ArrayBuffer (DICOM 프레임 데이터)
+ */
+export async function retrieveFrame(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumber: number
+): Promise<ArrayBuffer> {
+  const url = getFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+
+  const response = await fetch(url, {
+    headers: {
+      'Accept': 'application/octet-stream',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`WADO-RS retrieveFrame failed: ${response.status}`)
+  }
+
+  return response.arrayBuffer()
+}
+
+// ============================================================
+// STOW-RS: Store Services
+// ============================================================
+
+/**
+ * STOW-RS Response 타입
+ */
+export interface StowRsResponse {
+  /**
+   * 업로드된 Study Instance UID
+   */
+  studyInstanceUid?: string
+  /**
+   * 업로드된 Series Instance UID
+   */
+  seriesInstanceUid?: string
+  /**
+   * 업로드된 SOP Instance UID
+   */
+  sopInstanceUid?: string
+  /**
+   * 업로드 성공 여부
+   */
+  success: boolean
+  /**
+   * 에러 메시지 (실패 시)
+   */
+  error?: string
+}
+
+/**
+ * STOW-RS: DICOM 파일 업로드
+ *
+ * @param file DICOM 파일
+ * @param onProgress 진행률 콜백 (0-100)
+ * @returns StowRsResponse
+ */
+export async function storeInstance(
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<StowRsResponse> {
+  const url = `${DICOMWEB_BASE_URL}/studies`
+
+  // multipart/related 형식으로 전송
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    // 진행률 추적
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100)
+          onProgress(progress)
+        }
+      })
+    }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status === 200 || xhr.status === 201) {
+        // 성공
+        try {
+          const response = xhr.responseText ? JSON.parse(xhr.responseText) : {}
+          resolve({
+            studyInstanceUid: response.studyInstanceUid,
+            seriesInstanceUid: response.seriesInstanceUid,
+            sopInstanceUid: response.sopInstanceUid,
+            success: true,
+          })
+        } catch {
+          // JSON 파싱 실패해도 성공으로 처리 (일부 STOW-RS 구현은 빈 응답)
+          resolve({
+            success: true,
+          })
+        }
+      } else if (xhr.status === 409) {
+        // Conflict - 중복 파일
+        resolve({
+          success: false,
+          error: '이미 존재하는 파일입니다',
+        })
+      } else if (xhr.status === 413) {
+        // Payload Too Large
+        resolve({
+          success: false,
+          error: '파일 크기가 너무 큽니다',
+        })
+      } else if (xhr.status === 415) {
+        // Unsupported Media Type
+        resolve({
+          success: false,
+          error: '지원하지 않는 파일 형식입니다',
+        })
+      } else if (xhr.status === 422) {
+        // Unprocessable Entity
+        resolve({
+          success: false,
+          error: '유효하지 않은 DICOM 파일입니다',
+        })
+      } else {
+        reject(new Error(`STOW-RS upload failed: ${xhr.status}`))
+      }
+    })
+
+    xhr.addEventListener('error', () => reject(new Error('네트워크 오류')))
+    xhr.addEventListener('timeout', () => reject(new Error('요청 시간 초과')))
+
+    xhr.open('POST', url)
+    xhr.setRequestHeader('Accept', 'application/dicom+json')
+    xhr.timeout = 120000 // 120초 타임아웃
+    xhr.send(formData)
+  })
+}

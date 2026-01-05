@@ -19,10 +19,13 @@ import type {
  * 1. ViewerToolbar (도구 모음)
  * 2. DicomViewer (이미지 렌더링)
  * 3. useInstances Hook (데이터 조회)
- * 4. URL 파라미터로 Series 선택
+ * 4. URL 파라미터로 Study/Series 선택
  */
 export default function DicomViewerPage() {
-  const { seriesId } = useParams<{ seriesId: string }>()
+  const { studyInstanceUid, seriesInstanceUid } = useParams<{
+    studyInstanceUid: string
+    seriesInstanceUid: string
+  }>()
   const navigate = useNavigate()
 
   const [activeTool, setActiveTool] = useState<ViewerTool>('WindowLevel')
@@ -30,7 +33,10 @@ export default function DicomViewerPage() {
     useState<WindowLevelPreset>()
 
   // TanStack Query Hook
-  const { data, isLoading, error } = useInstances(seriesId || '')
+  const { data, isLoading, error } = useInstances(
+    studyInstanceUid || '',
+    seriesInstanceUid || ''
+  )
 
   const handleToolChange = (tool: ViewerTool) => {
     if (tool === 'Reset') {

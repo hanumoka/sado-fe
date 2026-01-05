@@ -18,11 +18,11 @@ import type {
 /**
  * DicomViewer.tsx
  *
- * Cornerstone3D 기반 DICOM 이미지 뷰어 컴포넌트
+ * Cornerstone3D 기반 DICOM 이미지 뷰어 컴포넌트 (2x2 멀티 viewport)
  *
  * 기능:
  * - Cornerstone3D로 실제 DICOM 이미지 렌더링
- * - WADO-RS/WADO-URI로 DICOM 파일 로드
+ * - 2x2 그리드로 연속된 4개 Instance 동시 표시
  * - 다중 Instance 네비게이션 (Stack)
  * - 키보드 단축키 지원
  * - 확대/축소, Window/Level 조정
@@ -36,8 +36,23 @@ interface DicomViewerProps {
 }
 
 const RENDERING_ENGINE_ID = 'dicomViewerRenderingEngine'
-const VIEWPORT_ID = 'dicomViewerViewport'
+const VIEWPORT_IDS = ['viewport-0', 'viewport-1', 'viewport-2', 'viewport-3']
 const TOOL_GROUP_ID = 'dicomViewerToolGroup'
+
+/**
+ * IStackViewport 타입 가드
+ */
+function isStackViewport(
+  viewport: unknown
+): viewport is cornerstone.Types.IStackViewport {
+  return (
+    viewport !== null &&
+    typeof viewport === 'object' &&
+    'setStack' in viewport &&
+    'setImageIdIndex' in viewport &&
+    typeof (viewport as any).setStack === 'function'
+  )
+}
 
 export default function DicomViewer({
   instances,
@@ -45,8 +60,8 @@ export default function DicomViewer({
   activeTool,
   windowLevelPreset,
 }: DicomViewerProps) {
-  const viewerRef = useRef<HTMLDivElement>(null)
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const viewportRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null])
+  const [currentBaseIndex, setCurrentBaseIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [cornerstoneReady, setCornerstoneReady] = useState(false)
@@ -55,10 +70,10 @@ export default function DicomViewer({
   const toolGroupRef = useRef<ReturnType<
     typeof cornerstoneTools.ToolGroupManager.getToolGroup
   > | null>(null)
+  const instancesLengthRef = useRef(instances.length)
 
-  const currentInstance = instances[currentIndex]
+  instancesLengthRef.current = instances.length
 
-  // Cornerstone3D 초기화
   useEffect(() => {
     let mounted = true
 
@@ -87,63 +102,103 @@ export default function DicomViewer({
     }
   }, [])
 
-  // Rendering Engine 및 Viewport 설정
-  useEffect(() => {
-    if (!cornerstoneReady || !viewerRef.current || instances.length === 0) return
+  const loadImageStack = useCallback(async () => {
+    if (!series || instances.length === 0 || !renderingEngineRef.current) return
 
-    const element = viewerRef.current
+    try {
+      setIsLoading(true)
+
+      const allImageIds = instances.map((instance) => {
+        const wadoUrl = getWadoUriUrl(
+          series.studyInstanceUid,
+          series.seriesInstanceUid,
+          instance.sopInstanceUid
+        )
+        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
+        return `wadouri:${API_BASE}${wadoUrl}`
+      })
+
+      console.log('[DicomViewer] Loading 2x2 grid with', allImageIds.length, 'total images')
+
+      for (let i = 0; i < VIEWPORT_IDS.length; i++) {
+        const viewport = renderingEngineRef.current.getViewport(VIEWPORT_IDS[i])
+
+        if (!isStackViewport(viewport)) {
+          throw new Error(`Invalid viewport type: expected IStackViewport for ${VIEWPORT_IDS[i]}`)
+        }
+
+        const imageIndex = currentBaseIndex + i
+
+        if (imageIndex < allImageIds.length) {
+          await viewport.setStack(allImageIds, imageIndex)
+          viewport.render()
+        } else {
+          console.log(`[DicomViewer] Viewport ${i} has no image (index ${imageIndex})`)
+        }
+      }
+
+      console.log('[DicomViewer] 2x2 grid loaded successfully')
+
+      setIsLoading(false)
+      setLoadError(null)
+    } catch (error) {
+      console.error('[DicomViewer] Failed to load image stack:', error)
+      setLoadError('DICOM 이미지 로드에 실패했습니다.')
+      setIsLoading(false)
+    }
+  }, [series, instances, currentBaseIndex])
+
+  useEffect(() => {
+    if (!cornerstoneReady || !viewportRefs.current.every(ref => ref) || instances.length === 0) return
 
     async function setupViewer() {
       try {
         setIsLoading(true)
         setLoadError(null)
 
-        // RenderingEngine 생성
         let renderingEngine = cornerstone.getRenderingEngine(RENDERING_ENGINE_ID)
         if (!renderingEngine) {
           renderingEngine = new cornerstone.RenderingEngine(RENDERING_ENGINE_ID)
         }
         renderingEngineRef.current = renderingEngine
 
-        // Viewport 설정
-        const viewportInput: cornerstone.Types.PublicViewportInput = {
-          viewportId: VIEWPORT_ID,
+        const viewportInputs: cornerstone.Types.PublicViewportInput[] = VIEWPORT_IDS.map((id, index) => ({
+          viewportId: id,
           type: cornerstone.Enums.ViewportType.STACK,
-          element,
+          element: viewportRefs.current[index]!,
           defaultOptions: {
             background: [0, 0, 0] as cornerstone.Types.Point3,
           },
-        }
+        }))
 
-        renderingEngine.enableElement(viewportInput)
+        viewportInputs.forEach(viewportInput => {
+          renderingEngine.enableElement(viewportInput)
+        })
 
-        // Tool Group 설정
         let toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(TOOL_GROUP_ID)
         if (!toolGroup) {
           toolGroup = cornerstoneTools.ToolGroupManager.createToolGroup(TOOL_GROUP_ID)
         }
 
         if (toolGroup) {
-          toolGroup.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID)
+          VIEWPORT_IDS.forEach(id => {
+            toolGroup!.addViewport(id, RENDERING_ENGINE_ID)
+          })
 
-          // 도구 설정
           const toolsToAdd = [
             { tool: cornerstoneTools.WindowLevelTool, name: 'WindowLevel' },
             { tool: cornerstoneTools.PanTool, name: 'Pan' },
             { tool: cornerstoneTools.ZoomTool, name: 'Zoom' },
             { tool: cornerstoneTools.StackScrollTool, name: 'StackScroll' },
-            { tool: cornerstoneTools.LengthTool, name: 'Length' },
           ]
 
           toolsToAdd.forEach(({ name }) => {
             try {
               toolGroup!.addTool(name)
             } catch {
-              // 이미 추가된 도구면 무시
             }
           })
 
-          // 기본 도구 활성화
           toolGroup.setToolActive('WindowLevel', {
             bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Primary }],
           })
@@ -160,7 +215,6 @@ export default function DicomViewer({
           toolGroupRef.current = toolGroup
         }
 
-        // 이미지 스택 로드
         await loadImageStack()
       } catch (error) {
         console.error('[DicomViewer] Setup failed:', error)
@@ -171,77 +225,23 @@ export default function DicomViewer({
 
     setupViewer()
 
-    // Cleanup
     return () => {
       if (renderingEngineRef.current) {
         try {
-          renderingEngineRef.current.disableElement(VIEWPORT_ID)
+          VIEWPORT_IDS.forEach(id => {
+            renderingEngineRef.current!.disableElement(id)
+          })
         } catch {
-          // 무시
         }
       }
     }
-  }, [cornerstoneReady, instances.length])
+  }, [cornerstoneReady, instances.length, loadImageStack])
 
-  // 이미지 스택 로드
-  const loadImageStack = useCallback(async () => {
-    if (!series || instances.length === 0 || !renderingEngineRef.current) return
-
-    try {
-      setIsLoading(true)
-
-      // WADO-URI 형식의 이미지 URL 생성
-      const imageIds = instances.map((instance) => {
-        // wadouri 스키마로 WADO-URI URL 생성
-        const wadoUrl = getWadoUriUrl(
-          series.studyInstanceUid,
-          series.seriesInstanceUid,
-          instance.sopInstanceUid
-        )
-        return `wadouri:${window.location.origin}${wadoUrl}`
-      })
-
-      console.log('[DicomViewer] Loading image stack:', imageIds.length, 'images')
-
-      // Viewport에 이미지 스택 설정
-      const viewport = renderingEngineRef.current.getViewport(
-        VIEWPORT_ID
-      ) as cornerstone.Types.IStackViewport
-
-      if (viewport) {
-        await viewport.setStack(imageIds, currentIndex)
-        viewport.render()
-        console.log('[DicomViewer] Image stack loaded successfully')
-      }
-
-      setIsLoading(false)
-      setLoadError(null)
-    } catch (error) {
-      console.error('[DicomViewer] Failed to load image stack:', error)
-      setLoadError('DICOM 이미지 로드에 실패했습니다. 백엔드 서버를 확인하세요.')
-      setIsLoading(false)
-    }
-  }, [series, instances, currentIndex])
-
-  // 이미지 인덱스 변경 시 Viewport 업데이트
   useEffect(() => {
     if (!renderingEngineRef.current || isLoading) return
+    loadImageStack()
+  }, [currentBaseIndex, loadImageStack, isLoading])
 
-    const viewport = renderingEngineRef.current.getViewport(
-      VIEWPORT_ID
-    ) as cornerstone.Types.IStackViewport
-
-    if (viewport) {
-      try {
-        viewport.setImageIdIndex(currentIndex)
-        viewport.render()
-      } catch (error) {
-        console.warn('[DicomViewer] Failed to set image index:', error)
-      }
-    }
-  }, [currentIndex, isLoading])
-
-  // 도구 변경 처리
   useEffect(() => {
     if (!toolGroupRef.current) return
 
@@ -249,49 +249,48 @@ export default function DicomViewer({
     const toolName = mapViewerToolToCornerstone(activeTool)
 
     if (toolName) {
-      // 기존 Primary 도구 비활성화
       try {
         toolGroup.setToolPassive('WindowLevel')
         toolGroup.setToolPassive('Pan')
         toolGroup.setToolPassive('Zoom')
-        toolGroup.setToolPassive('Length')
       } catch {
-        // 무시
       }
 
-      // 새 도구 활성화
       toolGroup.setToolActive(toolName, {
         bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Primary }],
       })
     }
   }, [activeTool])
 
-  // Window/Level 프리셋 적용
   useEffect(() => {
     if (!windowLevelPreset || !renderingEngineRef.current) return
 
-    const viewport = renderingEngineRef.current.getViewport(
-      VIEWPORT_ID
-    ) as cornerstone.Types.IStackViewport
+    VIEWPORT_IDS.forEach(id => {
+      const viewport = renderingEngineRef.current!.getViewport(id)
 
-    if (viewport) {
+      if (!isStackViewport(viewport)) {
+        return
+      }
+
       const { windowWidth, windowCenter } = windowLevelPreset
-      viewport.setProperties({ voiRange: { lower: windowCenter - windowWidth / 2, upper: windowCenter + windowWidth / 2 } })
+      viewport.setProperties({
+        voiRange: {
+          lower: windowCenter - windowWidth / 2,
+          upper: windowCenter + windowWidth / 2
+        }
+      })
       viewport.render()
-    }
+    })
   }, [windowLevelPreset])
 
-  // 이전 Instance로 이동
   const handlePrevious = useCallback(() => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : prev))
+    setCurrentBaseIndex((prev) => Math.max(0, prev - 1))
   }, [])
 
-  // 다음 Instance로 이동
   const handleNext = useCallback(() => {
-    setCurrentIndex((prev) => (prev < instances.length - 1 ? prev + 1 : prev))
-  }, [instances.length])
+    setCurrentBaseIndex((prev) => Math.min(instancesLengthRef.current - 1, prev + 1))
+  }, [])
 
-  // 키보드 네비게이션
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -302,17 +301,17 @@ export default function DicomViewer({
           handleNext()
           break
         case 'Home':
-          setCurrentIndex(0)
+          setCurrentBaseIndex(0)
           break
         case 'End':
-          setCurrentIndex(instances.length - 1)
+          setCurrentBaseIndex(Math.max(0, instancesLengthRef.current - 1))
           break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handlePrevious, handleNext, instances.length])
+  }, [handlePrevious, handleNext])
 
   if (instances.length === 0) {
     return (
@@ -327,14 +326,41 @@ export default function DicomViewer({
 
   return (
     <div className="relative w-full h-full bg-black overflow-hidden select-none">
-      {/* Cornerstone3D 렌더링 영역 */}
-      <div
-        ref={viewerRef}
-        className="w-full h-full"
-        style={{ minHeight: '400px' }}
-      />
+      <div className="grid grid-cols-2 grid-rows-2 gap-1 h-full p-1">
+        {VIEWPORT_IDS.map((id, index) => {
+          const imageIndex = currentBaseIndex + index
+          const instance = instances[imageIndex]
 
-      {/* 로딩 인디케이터 */}
+          return (
+            <div key={id} className="relative bg-black border border-gray-700">
+              <div
+                ref={(el) => (viewportRefs.current[index] = el)}
+                className="w-full h-full"
+                style={{ minHeight: '200px' }}
+              />
+
+              {instance && (
+                <ViewerOverlay
+                  series={series}
+                  instance={instance}
+                  currentIndex={imageIndex}
+                  totalInstances={instances.length}
+                  activeTool={activeTool}
+                  windowLevelPreset={windowLevelPreset}
+                  compact={true}
+                />
+              )}
+
+              {!instance && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-gray-600">No Image</p>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80">
           <div className="text-center text-white">
@@ -344,59 +370,43 @@ export default function DicomViewer({
         </div>
       )}
 
-      {/* 에러 표시 */}
       {loadError && !isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80">
           <div className="text-center text-white max-w-md px-4">
             <ImageIcon className="h-16 w-16 mx-auto mb-4 text-red-500" />
             <p className="text-lg text-red-400 mb-2">오류 발생</p>
             <p className="text-gray-400 text-sm">{loadError}</p>
-            <p className="text-gray-500 text-xs mt-4">
-              Mock 모드에서는 실제 DICOM 이미지가 없으므로 렌더링되지 않습니다.
-              <br />
-              백엔드에 DICOM 파일을 업로드한 후 다시 시도하세요.
-            </p>
           </div>
         </div>
       )}
 
-      {/* 네비게이션 컨트롤 */}
       {instances.length > 1 && !isLoading && (
         <>
           <button
             onClick={handlePrevious}
-            disabled={currentIndex === 0}
-            className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            disabled={currentBaseIndex === 0}
+            className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-all disabled:opacity-30 disabled:cursor-not-allowed z-10"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
 
           <button
             onClick={handleNext}
-            disabled={currentIndex === instances.length - 1}
-            className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            disabled={currentBaseIndex >= instances.length - 1}
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-all disabled:opacity-30 disabled:cursor-not-allowed z-10"
           >
             <ChevronRight className="h-6 w-6" />
           </button>
         </>
       )}
 
-      {/* 오버레이 정보 */}
-      <ViewerOverlay
-        series={series}
-        instance={currentInstance}
-        currentIndex={currentIndex}
-        totalInstances={instances.length}
-        activeTool={activeTool}
-        windowLevelPreset={windowLevelPreset}
-      />
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-md text-sm z-10">
+        Showing {currentBaseIndex + 1}-{Math.min(currentBaseIndex + 4, instances.length)} of {instances.length}
+      </div>
     </div>
   )
 }
 
-/**
- * ViewerTool을 Cornerstone 도구 이름으로 매핑
- */
 function mapViewerToolToCornerstone(tool: ViewerTool): string | null {
   switch (tool) {
     case 'WindowLevel':
@@ -405,8 +415,6 @@ function mapViewerToolToCornerstone(tool: ViewerTool): string | null {
       return 'Zoom'
     case 'Pan':
       return 'Pan'
-    case 'Length':
-      return 'Length'
     default:
       return null
   }

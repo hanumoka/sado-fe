@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>sado_fe</title>
+
+    <!-- globalThis polyfill for Cornerstone3D vtk.js compatibility -->
+    <script>
+      if (typeof globalThis === 'undefined') {
+        (function() {
+          if (typeof self !== 'undefined') { window.globalThis = self; }
+          else if (typeof window !== 'undefined') { window.globalThis = window; }
+          else if (typeof global !== 'undefined') { window.globalThis = global; }
+          else { throw new Error('Unable to locate global object'); }
+        })();
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

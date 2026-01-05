@@ -149,7 +149,7 @@ export default function StudyDetailPage() {
         <div className="p-6">
           <SeriesThumbnailGrid
             seriesList={seriesList || []}
-            studyId={studyId}
+            studyInstanceUid={study.studyInstanceUid}
           />
         </div>
       </div>

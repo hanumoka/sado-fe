@@ -55,3 +55,16 @@ export type {
 
 // 에러 코드 상수
 export { ErrorCodes } from './response'
+
+// Admin Dashboard 타입
+export type {
+  DashboardSummary,
+  StorageSummary,
+  TierDistribution,
+  FileAssetSummary,
+  TieringPolicies,
+  CategoryStorageMetrics,
+  StorageMetricsTrend,
+  SeaweedFSCapacity,
+  PageResponse,
+} from './admin'

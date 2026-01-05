@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from '@/components/layout/Layout'
-import Dashboard from '@/app/pages/Dashboard'
+import AdminDashboardPage from '@/app/pages/admin/AdminDashboardPage'
 import PatientListPage from '@/app/pages/PatientListPage'
 import StudyListPage from '@/app/pages/StudyListPage'
 import StudyDetailPage from '@/app/pages/StudyDetailPage'
@@ -29,8 +29,8 @@ export default function Router() {
       <Routes>
         {/* Layout 내부에 Nested Routes */}
         <Route path="/" element={<Layout />}>
-          {/* Admin 대시보드 (통합) */}
-          <Route index element={<Dashboard />} />
+          {/* Admin 대시보드 (Real API 연동) */}
+          <Route index element={<AdminDashboardPage />} />
 
           {/* Phase 1: Core PACS 기능 */}
           <Route path="patients" element={<PatientListPage />} />
@@ -48,7 +48,7 @@ export default function Router() {
         </Route>
 
         {/* DICOM Viewer (Full Screen - Layout 밖) */}
-        <Route path="/viewer/:seriesId" element={<DicomViewerPage />} />
+        <Route path="/viewer/:studyInstanceUid/:seriesInstanceUid" element={<DicomViewerPage />} />
 
         {/* 404 Not Found */}
         <Route path="*" element={<NotFoundPage />} />

@@ -8,6 +8,12 @@
  */
 
 /**
+ * 성별 타입 (DICOM 표준)
+ * M: Male, F: Female, O: Other, U: Unknown
+ */
+export type Gender = 'M' | 'F' | 'O' | 'U'
+
+/**
  * 환자 정보
  */
 export interface Patient {
@@ -15,10 +21,10 @@ export interface Patient {
   dicomPatientId: string // DICOM Patient ID
   name: string // 환자 이름
   age: number // 나이
-  gender: 'M' | 'F' // 성별
+  gender: Gender // 성별
   issuer: string // 발급 기관
-  studiesCount: number // Study 개수
-  lastStudyDate: string // 최근 Study 날짜 (YYYY-MM-DD)
+  studiesCount?: number // Study 개수 (Backend API 미구현)
+  lastStudyDate?: string // 최근 Study 날짜 (YYYY-MM-DD, Backend API 미구현)
 }
 
 /**
@@ -60,11 +66,6 @@ export interface Instance {
   instanceNumber: number // Instance 번호
   storageUri: string // 저장 경로 (SeaweedFS URI)
 }
-
-/**
- * 성별 타입
- */
-export type Gender = 'M' | 'F'
 
 /**
  * Modality 타입 (확장 가능)

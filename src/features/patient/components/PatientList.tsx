@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpDown, ArrowUp, ArrowDown, User } from 'lucide-react'
-import type { Patient } from '../types/patient'
+import type { Patient, Gender } from '../types/patient'
 import Pagination from './Pagination'
 
 /**
@@ -16,6 +16,22 @@ import Pagination from './Pagination'
  * - 페이지네이션
  * - 환자 상세 모달 (더블클릭)
  */
+
+// Gender 표시 라벨
+const GENDER_LABELS: Record<Gender, string> = {
+  M: '남성',
+  F: '여성',
+  O: '기타',
+  U: '알 수 없음',
+}
+
+// Gender 색상 스타일
+const GENDER_COLORS: Record<Gender, string> = {
+  M: 'bg-blue-100 text-blue-800',
+  F: 'bg-pink-100 text-pink-800',
+  O: 'bg-purple-100 text-purple-800',
+  U: 'bg-gray-100 text-gray-800',
+}
 
 interface PatientListProps {
   patients: Patient[]
@@ -171,7 +187,7 @@ export default function PatientList({
             {paginatedPatients.map((patient) => (
               <tr
                 key={patient.id}
-                onClick={() => handleRowClick(patient.id)}
+                onClick={() => handleRowClick(patient.dicomPatientId)}
                 onDoubleClick={() => handleRowDoubleClick(patient)}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
@@ -190,22 +206,20 @@ export default function PatientList({
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      patient.gender === 'M'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-pink-100 text-pink-800'
+                      GENDER_COLORS[patient.gender] || GENDER_COLORS.U
                     }`}
                   >
-                    {patient.gender === 'M' ? '남성' : '여성'}
+                    {GENDER_LABELS[patient.gender] || GENDER_LABELS.U}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {patient.issuer}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {patient.studiesCount}개
+                  {patient.studiesCount !== undefined ? `${patient.studiesCount}개` : 'N/A'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {patient.lastStudyDate}
+                  {patient.lastStudyDate || 'N/A'}
                 </td>
               </tr>
             ))}

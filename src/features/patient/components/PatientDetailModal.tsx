@@ -13,7 +13,23 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, User, Calendar, Building2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { Patient } from '../types/patient'
+import type { Patient, Gender } from '../types/patient'
+
+// Gender 표시 라벨
+const GENDER_LABELS: Record<Gender, string> = {
+  M: '남성',
+  F: '여성',
+  O: '기타',
+  U: '알 수 없음',
+}
+
+// Gender 색상 스타일
+const GENDER_COLORS: Record<Gender, string> = {
+  M: 'bg-blue-100 text-blue-800',
+  F: 'bg-pink-100 text-pink-800',
+  O: 'bg-purple-100 text-purple-800',
+  U: 'bg-gray-100 text-gray-800',
+}
 
 interface PatientDetailModalProps {
   patient: Patient
@@ -49,7 +65,7 @@ export default function PatientDetailModal({
   }
 
   const handleViewStudies = () => {
-    navigate(`/studies?patientId=${patient.id}`)
+    navigate(`/studies?patientId=${patient.dicomPatientId}`)
   }
 
   return (
@@ -110,12 +126,10 @@ export default function PatientDetailModal({
               <p className="text-sm text-gray-500">성별</p>
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  patient.gender === 'M'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-pink-100 text-pink-800'
+                  GENDER_COLORS[patient.gender] || GENDER_COLORS.U
                 }`}
               >
-                {patient.gender === 'M' ? '남성' : '여성'}
+                {GENDER_LABELS[patient.gender] || GENDER_LABELS.U}
               </span>
             </div>
             <div>
@@ -145,7 +159,7 @@ export default function PatientDetailModal({
             <div>
               <p className="text-sm text-gray-500">Study 정보</p>
               <p className="font-medium text-gray-900">
-                총 {patient.studiesCount}개의 Study
+                {patient.studiesCount !== undefined ? `총 ${patient.studiesCount}개의 Study` : 'N/A'}
               </p>
             </div>
           </div>
@@ -158,7 +172,7 @@ export default function PatientDetailModal({
             <div>
               <p className="text-sm text-gray-500">최근 Study</p>
               <p className="font-medium text-gray-900">
-                {patient.lastStudyDate}
+                {patient.lastStudyDate || 'N/A'}
               </p>
             </div>
           </div>

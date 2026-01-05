@@ -26,15 +26,12 @@ export interface ViewerInstance extends BaseInstance {
 
 /**
  * Series 인터페이스 (Viewer에서 필요한 정보)
+ *
+ * Series 타입을 확장하여 DICOM UID 필드 추가
  */
-export interface ViewerSeries {
-  id: string
-  seriesInstanceUid: string
-  studyInstanceUid: string // Cornerstone3D WADO-RS URL 생성용
-  seriesNumber: number
-  modality: string
-  seriesDescription: string
-  instancesCount: number
+export interface ViewerSeries extends import('@/types').Series {
+  studyInstanceUid: string // Cornerstone3D WADO-RS URL 생성용 (DICOM UID)
+  // Inherits from Series: id, seriesInstanceUid, studyId (내부 ID), seriesNumber, modality, seriesDescription, instancesCount
 }
 
 /**
@@ -44,9 +41,6 @@ export type ViewerTool =
   | 'WindowLevel' // 창/레벨 조정
   | 'Zoom' // 확대/축소
   | 'Pan' // 이동
-  | 'Length' // 길이 측정
-  | 'Angle' // 각도 측정
-  | 'Rectangle' // 사각형 ROI
   | 'Reset' // 초기화
 
 /**

@@ -6,12 +6,17 @@
 
 /**
  * 기본 API 응답 wrapper
+ * Backend ApiResponse 형식에 맞춤
+ *
+ * code 체계:
+ * - 2xxxxx: 성공 (예: 200000)
+ * - 4xxxxx: 클라이언트 에러
+ * - 5xxxxx: 서버 에러
  */
 export interface ApiResponse<T> {
-  success: boolean
+  code: number
+  message: string
   data: T
-  message?: string
-  timestamp?: string
 }
 
 /**
@@ -33,14 +38,12 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
 
 /**
  * API 에러 응답
+ * Backend와 동일한 형식 사용
  */
 export interface ApiErrorResponse {
-  success: false
-  error: {
-    code: string
-    message: string
-    details?: Record<string, unknown>
-  }
+  code: number
+  message: string
+  data: null
 }
 
 /**

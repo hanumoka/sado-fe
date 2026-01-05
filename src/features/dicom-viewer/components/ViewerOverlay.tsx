@@ -4,9 +4,8 @@
  * DICOM 뷰어 오버레이 컴포넌트
  *
  * 기능:
- * - 환자 정보 표시 (좌상단)
- * - 이미지 정보 표시 (우상단)
- * - 도구/상태 정보 표시
+ * - Compact 모드: Instance 번호만 표시 (multi-viewport용)
+ * - Full 모드: 모든 정보 표시 (단일 viewport용)
  */
 
 import type {
@@ -23,6 +22,7 @@ interface ViewerOverlayProps {
   totalInstances: number
   activeTool: ViewerTool
   windowLevelPreset?: WindowLevelPreset
+  compact?: boolean // 2x2 그리드용 compact 모드
 }
 
 export default function ViewerOverlay({
@@ -32,7 +32,24 @@ export default function ViewerOverlay({
   totalInstances,
   activeTool,
   windowLevelPreset,
+  compact = false,
 }: ViewerOverlayProps) {
+  // Compact 모드: Instance 번호만 간단하게 표시
+  if (compact) {
+    return (
+      <>
+        {instance && (
+          <div className="absolute top-2 left-2 text-white">
+            <div className="bg-black/70 backdrop-blur-sm rounded px-2 py-1">
+              <p className="text-xs font-mono">#{currentIndex + 1}</p>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // Full 모드: 모든 정보 표시 (기존 동작)
   return (
     <>
       {/* 좌상단: 환자/시리즈 정보 */}

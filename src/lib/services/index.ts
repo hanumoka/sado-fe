@@ -15,7 +15,7 @@ export {
 } from './studyService'
 
 // Instance 서비스
-export { fetchSeriesById, fetchInstancesBySeriesId } from './instanceService'
+export { fetchInstancesBySeriesId } from './instanceService'
 
 // DICOMweb 서비스 (QIDO-RS, WADO-RS)
 export {

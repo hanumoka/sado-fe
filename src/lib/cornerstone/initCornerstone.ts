@@ -49,7 +49,6 @@ export async function initCornerstone(): Promise<void> {
     cornerstoneTools.addTool(cornerstoneTools.PanTool)
     cornerstoneTools.addTool(cornerstoneTools.ZoomTool)
     cornerstoneTools.addTool(cornerstoneTools.StackScrollTool)
-    cornerstoneTools.addTool(cornerstoneTools.LengthTool)
 
     initialized = true
     console.log('[Cornerstone] Initialized successfully')

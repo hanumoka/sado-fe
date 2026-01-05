@@ -1,9 +1,6 @@
 import {
   Maximize2,
   Move,
-  Ruler,
-  Triangle,
-  Square,
   RotateCcw,
   Sun,
   type LucideIcon,
@@ -37,9 +34,6 @@ export default function ViewerToolbar({
     { name: 'WindowLevel', icon: Sun, label: '창/레벨' },
     { name: 'Zoom', icon: Maximize2, label: '확대' },
     { name: 'Pan', icon: Move, label: '이동' },
-    { name: 'Length', icon: Ruler, label: '길이' },
-    { name: 'Angle', icon: Triangle, label: '각도' },
-    { name: 'Rectangle', icon: Square, label: 'ROI' },
     { name: 'Reset', icon: RotateCcw, label: '초기화' },
   ]
 

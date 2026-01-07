@@ -43,11 +43,11 @@ export default function DicomViewerPage() {
     // InstanceSummary 형식으로 변환
     const instanceSummary: InstanceSummary = {
       sopInstanceUid: firstInstance.sopInstanceUid,
-      studyInstanceUid: firstInstance.studyInstanceUid,
-      seriesInstanceUid: firstInstance.seriesInstanceUid,
-      numberOfFrames: firstInstance.numberOfFrames || 1,
-      patientName: data.series.patientName,
-      modality: data.series.modality,
+      studyInstanceUid: firstInstance.studyInstanceUid ?? data.series.studyInstanceUid,
+      seriesInstanceUid: firstInstance.seriesInstanceUid ?? data.series.seriesInstanceUid,
+      numberOfFrames: firstInstance.numberOfFrames ?? 1,
+      patientName: data.series.patientName ?? '',
+      modality: data.series.modality ?? 'UN',
     }
 
     // 슬롯 0에 할당
@@ -79,10 +79,10 @@ export default function DicomViewerPage() {
           {data?.series && (
             <div>
               <h1 className="text-lg font-bold">
-                {data.series.modality} - {data.series.seriesDescription}
+                {data.series.modality ?? 'UN'} - {data.series.seriesDescription ?? 'N/A'}
               </h1>
               <p className="text-sm text-gray-400">
-                Series #{data.series.seriesNumber} • {data.series.instancesCount} Images
+                Series #{data.series.seriesNumber ?? 0} • {data.series.instancesCount ?? 0} Images
               </p>
             </div>
           )}
@@ -129,15 +129,15 @@ export default function DicomViewerPage() {
           <div className="grid grid-cols-4 gap-4 text-sm">
             <div>
               <p className="text-gray-400">Series Instance UID</p>
-              <p className="font-mono text-xs truncate">{data.series.seriesInstanceUid}</p>
+              <p className="font-mono text-xs truncate">{data.series.seriesInstanceUid ?? 'N/A'}</p>
             </div>
             <div>
               <p className="text-gray-400">Modality</p>
-              <p className="font-medium">{data.series.modality}</p>
+              <p className="font-medium">{data.series.modality ?? 'UN'}</p>
             </div>
             <div>
               <p className="text-gray-400">Series Number</p>
-              <p className="font-medium">{data.series.seriesNumber}</p>
+              <p className="font-medium">{data.series.seriesNumber ?? 0}</p>
             </div>
             <div>
               <p className="text-gray-400">Images</p>

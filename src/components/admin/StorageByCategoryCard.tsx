@@ -125,7 +125,8 @@ export default function StorageByCategoryCard({
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tickFormatter={(value) => formatBytes(value)} />
             <Tooltip
-              formatter={(value: number, name: string) => {
+              formatter={(value: number | undefined, name?: string) => {
+                if (value === undefined) return '0'
                 if (name === '크기') return formatBytes(value)
                 return value.toLocaleString()
               }}

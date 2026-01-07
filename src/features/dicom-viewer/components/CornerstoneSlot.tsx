@@ -34,7 +34,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   const {
     slots,
     globalFps,
-    availableInstances,
+    // availableInstances, // 현재 미사용
     nextFrameSlot,
     updateSlotPerformance,
     assignInstanceToSlot,

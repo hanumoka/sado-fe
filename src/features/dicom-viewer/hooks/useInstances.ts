@@ -48,14 +48,15 @@ export function useInstances(
 
       // Series 메타데이터 구성 (전달받은 데이터 사용 또는 기본값)
       const series: ViewerSeries = {
-        id: seriesMetadata?.id || '',
+        id: seriesMetadata?.id ?? '',
         seriesInstanceUid,
-        studyId: seriesMetadata?.studyId || '', // 내부 Study ID
+        studyId: seriesMetadata?.studyId ?? '', // 내부 Study ID
         studyInstanceUid, // DICOM Study UID
-        seriesNumber: seriesMetadata?.seriesNumber || 0,
-        modality: seriesMetadata?.modality || 'UN',
-        seriesDescription: seriesMetadata?.seriesDescription || '',
+        seriesNumber: seriesMetadata?.seriesNumber ?? 0,
+        modality: seriesMetadata?.modality ?? 'UN',
+        seriesDescription: seriesMetadata?.seriesDescription ?? '',
         instancesCount: instances.length,
+        patientName: seriesMetadata?.patientName ?? '', // 환자 이름
       }
 
       return { series, instances }

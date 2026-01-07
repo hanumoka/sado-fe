@@ -22,17 +22,6 @@ import { fetchStorageMetricsTrends } from '@/lib/services/adminService'
 import type { StorageMetricsTrend } from '@/types'
 
 /**
- * Bytes를 읽기 쉬운 단위로 변환
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`
-}
-
-/**
  * ISO DateTime을 "MM/DD HH:mm" 형식으로 변환
  */
 function formatTimestamp(isoString: string): string {
@@ -128,7 +117,7 @@ export function StorageTrendsChart() {
             tick={{ fontSize: 12 }}
           />
           <Tooltip
-            formatter={(value: number) => `${value.toFixed(2)} GB`}
+            formatter={(value: number | undefined) => value !== undefined ? `${value.toFixed(2)} GB` : '0 GB'}
             labelStyle={{ color: '#333' }}
           />
           <Legend />

@@ -13,9 +13,13 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchInstancesBySeriesId } from '@/lib/services/instanceService'
-import * as cornerstone from '@cornerstonejs/core'
 import { renderToCanvasCPU } from '@cornerstonejs/core/utilities'
 import { getWadoUriUrl } from '@/lib/services/dicomWebService'
+import {
+  initCornerstone,
+  isInitialized,
+  cornerstone,
+} from '@/lib/cornerstone'
 
 /**
  * Series 썸네일 Hook
@@ -53,6 +57,11 @@ export function useSeriesThumbnail(
       try {
         if (cancelled) return
         setIsGenerating(true)
+
+        // Cornerstone 초기화 확인 (WADO URI 로더 등록)
+        if (!isInitialized()) {
+          await initCornerstone()
+        }
 
         // 첫 번째 Instance 선택
         const firstInstance = instances[0]

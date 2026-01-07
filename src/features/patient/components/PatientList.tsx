@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpDown, ArrowUp, ArrowDown, User } from 'lucide-react'
 import type { Patient, Gender } from '../types/patient'
-import Pagination from './Pagination'
+import { Pagination } from '@/components/common'
 
 /**
  * PatientList.tsx
@@ -40,6 +40,8 @@ interface PatientListProps {
 }
 
 type SortKey =
+  | 'id'
+  | 'uuid'
   | 'name'
   | 'age'
   | 'gender'
@@ -54,6 +56,8 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'id', label: 'ID (PK)', className: 'w-20' },
+  { key: 'uuid', label: 'UUID', className: 'w-80' },
   { key: 'name', label: '이름' },
   { key: 'age', label: '나이', className: 'w-20' },
   { key: 'gender', label: '성별', className: 'w-20' },
@@ -99,17 +103,25 @@ export default function PatientList({
       let comparison = 0
 
       switch (key) {
+        case 'id':
+          comparison = Number(a[key]) - Number(b[key])
+          break
+        case 'uuid':
+          comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
+          break
         case 'name':
         case 'issuer':
         case 'gender':
           comparison = a[key].localeCompare(b[key])
           break
         case 'age':
-        case 'studiesCount':
           comparison = a[key] - b[key]
           break
+        case 'studiesCount':
+          comparison = (a[key] ?? 0) - (b[key] ?? 0)
+          break
         case 'lastStudyDate':
-          comparison = new Date(a[key]).getTime() - new Date(b[key]).getTime()
+          comparison = new Date(a[key] ?? 0).getTime() - new Date(b[key] ?? 0).getTime()
           break
       }
 
@@ -196,6 +208,12 @@ export default function PatientList({
                     <User className="h-4 w-4 text-gray-400" />
                     {patient.dicomPatientId}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {patient.id}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
+                  {patient.uuid ?? '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {patient.name}

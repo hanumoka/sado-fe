@@ -334,7 +334,7 @@ export default function DicomViewer({
           return (
             <div key={id} className="relative bg-black border border-gray-700">
               <div
-                ref={(el) => (viewportRefs.current[index] = el)}
+                ref={(el) => { viewportRefs.current[index] = el }}
                 className="w-full h-full"
                 style={{ minHeight: '200px' }}
               />

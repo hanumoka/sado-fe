@@ -5,7 +5,7 @@
  */
 
 // 엔티티 타입은 @/types에서 re-export
-export type { Patient } from '@/types'
+export type { Patient, Gender } from '@/types'
 
 /**
  * 환자 검색 파라미터

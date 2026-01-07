@@ -1,24 +1,24 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowUpDown, ArrowUp, ArrowDown, FileText } from 'lucide-react'
-import type { Study } from '../types/study'
+import { ArrowUpDown, ArrowUp, ArrowDown, Film } from 'lucide-react'
+import type { Series } from '../types/series'
 import { Pagination } from '@/components/common'
 import { getModalityBadgeColor } from '@/constants/modality'
 
 /**
- * StudyList.tsx
+ * SeriesList.tsx
  *
- * Study 목록 테이블 컴포넌트
+ * Series 목록 테이블 컴포넌트
  *
  * 기능:
- * - Study 데이터를 테이블로 표시
+ * - Series 데이터를 테이블로 표시
  * - 클릭 시 Study 상세 페이지로 이동
  * - 컬럼별 정렬
  * - 페이지네이션
  */
 
-interface StudyListProps {
-  studies: Study[]
+interface SeriesListProps {
+  seriesList: Series[]
   pageSize?: number
 }
 
@@ -26,10 +26,11 @@ type SortKey =
   | 'id'
   | 'uuid'
   | 'patientName'
-  | 'studyDate'
-  | 'modality'
   | 'studyDescription'
-  | 'seriesCount'
+  | 'modality'
+  | 'seriesDescription'
+  | 'bodyPartExamined'
+  | 'seriesNumber'
   | 'instancesCount'
 type SortOrder = 'asc' | 'desc'
 
@@ -42,18 +43,22 @@ const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
   { key: 'id', label: 'ID (PK)', className: 'w-20' },
   { key: 'uuid', label: 'UUID', className: 'w-80' },
   { key: 'patientName', label: '환자 이름' },
-  { key: 'studyDate', label: '검사 날짜', className: 'w-28' },
-  { key: 'modality', label: 'Modality', className: 'w-24' },
   { key: 'studyDescription', label: 'Study 설명' },
-  { key: 'seriesCount', label: 'Series', className: 'w-20' },
+  { key: 'modality', label: 'Modality', className: 'w-24' },
+  { key: 'seriesDescription', label: 'Series 설명' },
+  { key: 'bodyPartExamined', label: '검사 부위', className: 'w-28' },
+  { key: 'seriesNumber', label: 'No.', className: 'w-16' },
   { key: 'instancesCount', label: 'Images', className: 'w-20' },
 ]
 
-export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
+export default function SeriesList({
+  seriesList,
+  pageSize = 10,
+}: SeriesListProps) {
   const navigate = useNavigate()
   const [currentPage, setCurrentPage] = useState(1)
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    key: 'studyDate',
+    key: 'id',
     order: 'desc',
   })
 
@@ -76,29 +81,28 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
     )
   }
 
-  const sortedStudies = useMemo(() => {
-    const sorted = [...studies].sort((a, b) => {
+  const sortedSeriesList = useMemo(() => {
+    const sorted = [...seriesList].sort((a, b) => {
       const { key, order } = sortConfig
       let comparison = 0
 
       switch (key) {
         case 'id':
-          comparison = a[key].localeCompare(b[key])
+          comparison = Number(a[key]) - Number(b[key])
           break
         case 'uuid':
           comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
           break
         case 'patientName':
-        case 'modality':
         case 'studyDescription':
-          comparison = a[key].localeCompare(b[key])
+        case 'modality':
+        case 'seriesDescription':
+        case 'bodyPartExamined':
+          comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
           break
-        case 'seriesCount':
+        case 'seriesNumber':
         case 'instancesCount':
-          comparison = a[key] - b[key]
-          break
-        case 'studyDate':
-          comparison = new Date(a[key]).getTime() - new Date(b[key]).getTime()
+          comparison = (a[key] ?? 0) - (b[key] ?? 0)
           break
       }
 
@@ -106,10 +110,10 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
     })
 
     return sorted
-  }, [studies, sortConfig])
+  }, [seriesList, sortConfig])
 
-  const totalPages = Math.ceil(sortedStudies.length / pageSize)
-  const paginatedStudies = sortedStudies.slice(
+  const totalPages = Math.ceil(sortedSeriesList.length / pageSize)
+  const paginatedSeriesList = sortedSeriesList.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   )
@@ -118,7 +122,7 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
     navigate(`/studies/${studyId}`)
   }
 
-  if (studies.length === 0) {
+  if (seriesList.length === 0) {
     return null
   }
 
@@ -147,50 +151,48 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
           </thead>
 
           <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedStudies.map((study, index) => (
+            {paginatedSeriesList.map((series, index) => (
               <tr
-                key={study.id}
-                onClick={() => handleRowClick(study.id)}
+                key={series.id}
+                onClick={() => handleRowClick(series.studyId)}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                   {(currentPage - 1) * pageSize + index + 1}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {study.id}
+                  {series.id}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
-                  {study.uuid ?? '-'}
+                  {series.uuid ?? '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-gray-400" />
-                    {study.patientName}
+                    <Film className="h-4 w-4 text-gray-400" />
+                    {series.patientName ?? '-'}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  <div>
-                    <div>{study.studyDate}</div>
-                    <div className="text-xs text-gray-500">
-                      {study.studyTime}
-                    </div>
-                  </div>
+                <td className="px-6 py-4 text-sm text-gray-500">
+                  {series.studyDescription ?? '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getModalityBadgeColor(study.modality)}`}
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getModalityBadgeColor(series.modality)}`}
                   >
-                    {study.modality}
+                    {series.modality || '-'}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-500">
-                  {study.studyDescription}
+                  {series.seriesDescription || '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {series.bodyPartExamined ?? '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                  {study.seriesCount}
+                  {series.seriesNumber ?? '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                  {study.instancesCount}
+                  {series.instancesCount}
                 </td>
               </tr>
             ))}
@@ -202,7 +204,7 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
         currentPage={currentPage}
         totalPages={totalPages}
         onPageChange={setCurrentPage}
-        totalItems={studies.length}
+        totalItems={seriesList.length}
         pageSize={pageSize}
       />
     </div>

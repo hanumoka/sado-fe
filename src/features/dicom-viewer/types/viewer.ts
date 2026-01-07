@@ -9,7 +9,7 @@
  * - Window/Level 설정 타입 정의
  */
 
-import type { Instance as BaseInstance } from '@/types'
+import type { Instance as BaseInstance, Series as BaseSeries } from '@/types'
 
 // 기본 Instance 타입 re-export (기존 코드 호환성)
 export type { Instance, Series } from '@/types'
@@ -19,6 +19,9 @@ export type { Instance, Series } from '@/types'
  */
 export interface ViewerInstance extends BaseInstance {
   studyId?: string // Study ID
+  studyInstanceUid?: string // DICOM Study Instance UID
+  seriesInstanceUid?: string // DICOM Series Instance UID
+  numberOfFrames?: number // 멀티프레임 이미지의 프레임 수
   rows?: number // 이미지 행 수
   columns?: number // 이미지 열 수
   pixelSpacing?: [number, number] // 픽셀 간격 [행, 열]
@@ -29,8 +32,9 @@ export interface ViewerInstance extends BaseInstance {
  *
  * Series 타입을 확장하여 DICOM UID 필드 추가
  */
-export interface ViewerSeries extends import('@/types').Series {
+export interface ViewerSeries extends BaseSeries {
   studyInstanceUid: string // Cornerstone3D WADO-RS URL 생성용 (DICOM UID)
+  patientName?: string // 환자 이름 (디스플레이용)
   // Inherits from Series: id, seriesInstanceUid, studyId (내부 ID), seriesNumber, modality, seriesDescription, instancesCount
 }
 

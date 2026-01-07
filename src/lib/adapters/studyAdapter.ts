@@ -1,7 +1,7 @@
 import type { Study } from '@/types/entities'
 
 // DICOM PersonName 타입 정의 (PN VR)
-type DicomPersonName = { Alphabetic: string } | string | null | undefined
+type DicomPersonName = { Alphabetic?: string } | string | null | undefined
 
 // DICOMweb QIDO-RS Study 응답 타입
 // DICOM JSON 형식: { "TagGroup+TagElement": { vr: "VR", Value: [...] } }
@@ -47,15 +47,15 @@ function extractPersonName(pnValue: DicomPersonName): string {
  */
 export function adaptDicomWebStudy(dicom: DicomWebStudy, dbId?: number): Study {
   return {
-    id: dbId ? String(dbId) : dicom['0020000D']?.Value[0] || '',
-    studyInstanceUid: dicom['0020000D']?.Value[0] || '',
-    studyDate: dicom['00080020']?.Value[0] || '',
-    studyTime: dicom['00080030']?.Value[0] || '',
-    studyDescription: dicom['00081030']?.Value[0] || '',
-    patientId: dicom['00100020']?.Value[0] || '',
-    patientName: extractPersonName(dicom['00100010']?.Value?.[0]),
-    seriesCount: parseInt(dicom['00201206']?.Value[0] || '0'),
-    instancesCount: parseInt(dicom['00201208']?.Value[0] || '0'),
-    modality: dicom['00080061']?.Value?.[0] || '',
+    id: dbId ? String(dbId) : dicom['0020000D']?.Value?.[0] ?? '',
+    studyInstanceUid: dicom['0020000D']?.Value?.[0] ?? '',
+    studyDate: dicom['00080020']?.Value?.[0] ?? '',
+    studyTime: dicom['00080030']?.Value?.[0] ?? '',
+    studyDescription: dicom['00081030']?.Value?.[0] ?? '',
+    patientId: dicom['00100020']?.Value?.[0] ?? '',
+    patientName: extractPersonName(dicom['00100010']?.Value?.[0] ?? null),
+    seriesCount: parseInt(dicom['00201206']?.Value?.[0] ?? '0'),
+    instancesCount: parseInt(dicom['00201208']?.Value?.[0] ?? '0'),
+    modality: dicom['00080061']?.Value?.[0] ?? '',
   }
 }

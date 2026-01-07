@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { v4 as uuidv4 } from 'uuid'
 import { uploadConfig } from '@/lib/config'
 import { storeInstance } from '@/lib/services/dicomWebService'
@@ -14,9 +15,11 @@ import type { UploadFile, UploadResponse, UploadSummary } from '../types/upload'
  * - 병렬 업로드 (동시 N개)
  * - 각 파일의 진행 상태 추적
  * - 업로드 결과 요약
+ * - 업로드 완료 후 관련 캐시 무효화 (patients, studies)
  */
 
 export function useUploadDicom() {
+  const queryClient = useQueryClient()
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [summary, setSummary] = useState<UploadSummary | null>(null)
@@ -65,6 +68,7 @@ export function useUploadDicom() {
         // 성공
         return {
           success: true,
+          message: '업로드 성공',
           studyInstanceUid: result.studyInstanceUid,
           seriesInstanceUid: result.seriesInstanceUid,
           sopInstanceUid: result.sopInstanceUid,
@@ -212,7 +216,7 @@ export function useUploadDicom() {
       const endTime = Date.now()
       const duration = endTime - startTime
 
-      // 최종 상태에서 요약 생성
+      // 최종 상태에서 요약 생성 및 캐시 무효화
       setUploadFiles((currentFiles) => {
         const successCount = currentFiles.filter(
           (f) => f.status === 'success'
@@ -232,12 +236,19 @@ export function useUploadDicom() {
           endTime: new Date(endTime),
         })
 
+        // 성공한 파일이 있으면 관련 캐시 무효화
+        // → 환자 목록, Study 목록 페이지에서 새 데이터 표시
+        if (successCount > 0) {
+          queryClient.invalidateQueries({ queryKey: ['patients'] })
+          queryClient.invalidateQueries({ queryKey: ['studies'] })
+        }
+
         return currentFiles
       })
 
       setIsUploading(false)
     },
-    [uploadInParallel]
+    [uploadInParallel, queryClient]
   )
 
   /**
@@ -268,7 +279,7 @@ export function useUploadDicom() {
     await uploadInParallel(failedFiles)
     setIsUploading(false)
 
-    // 요약 업데이트
+    // 요약 업데이트 및 캐시 무효화
     setUploadFiles((currentFiles) => {
       const successCount = currentFiles.filter(
         (f) => f.status === 'success'
@@ -288,9 +299,15 @@ export function useUploadDicom() {
             }
       )
 
+      // 재시도로 성공한 파일이 있으면 캐시 무효화
+      if (successCount > 0) {
+        queryClient.invalidateQueries({ queryKey: ['patients'] })
+        queryClient.invalidateQueries({ queryKey: ['studies'] })
+      }
+
       return currentFiles
     })
-  }, [uploadFiles, uploadInParallel])
+  }, [uploadFiles, uploadInParallel, queryClient])
 
   return {
     uploadFiles,

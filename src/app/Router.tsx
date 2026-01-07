@@ -4,6 +4,8 @@ import AdminDashboardPage from '@/app/pages/admin/AdminDashboardPage'
 import PatientListPage from '@/app/pages/PatientListPage'
 import StudyListPage from '@/app/pages/StudyListPage'
 import StudyDetailPage from '@/app/pages/StudyDetailPage'
+import SeriesListPage from '@/app/pages/SeriesListPage'
+import InstanceListPage from '@/app/pages/InstanceListPage'
 import UploadPage from '@/app/pages/UploadPage'
 import DicomViewerPage from '@/app/pages/DicomViewerPage'
 import MultiSlotViewerPage from '@/app/pages/MultiSlotViewerPage'
@@ -37,6 +39,8 @@ export default function Router() {
           <Route path="patients" element={<PatientListPage />} />
           <Route path="studies" element={<StudyListPage />} />
           <Route path="studies/:studyId" element={<StudyDetailPage />} />
+          <Route path="series" element={<SeriesListPage />} />
+          <Route path="instances" element={<InstanceListPage />} />
           <Route path="upload" element={<UploadPage />} />
 
           {/* /admin 경로는 메인 대시보드로 리다이렉트 (하위 호환성) */}

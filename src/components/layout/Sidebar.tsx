@@ -4,6 +4,8 @@ import {
   Upload,
   Users,
   FileText,
+  Film,
+  Image,
   BarChart3,
   Layers,
   X,
@@ -35,6 +37,8 @@ const navItems: NavItem[] = [
   { name: 'DICOM 업로드', path: '/upload', icon: Upload },
   { name: '환자 목록', path: '/patients', icon: Users },
   { name: 'Study 목록', path: '/studies', icon: FileText },
+  { name: '시리즈 목록', path: '/series', icon: Film },
+  { name: '인스턴스 목록', path: '/instances', icon: Image },
   // DICOM 뷰어는 Study Detail → Series 클릭으로 접근
 
   // 고급 관리 기능 (Phase 2)

@@ -23,8 +23,11 @@ export default defineConfig({
         target: 'http://localhost:10201',
         changeOrigin: true,
       },
-      // Note: Gateway API disabled for POC (no /api proxy)
-      // Admin features (metrics, tiering) are disabled in POC phase
+      // REST API (Patient, Study, Admin)
+      '/api': {
+        target: 'http://localhost:10201',
+        changeOrigin: true,
+      },
     },
   },
   worker: {
@@ -52,7 +55,6 @@ export default defineConfig({
           cornerstone: [
             '@cornerstonejs/core',
             '@cornerstonejs/tools',
-            '@cornerstonejs/streaming-image-volume-loader',
           ],
         },
       },

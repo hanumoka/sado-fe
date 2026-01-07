@@ -14,8 +14,17 @@ export {
   fetchSeriesByStudyId,
 } from './studyService'
 
+// Series 서비스
+export { fetchSeries, fetchSeriesById } from './seriesService'
+
 // Instance 서비스
-export { fetchInstancesBySeriesId } from './instanceService'
+export {
+  fetchInstances,
+  fetchInstanceById,
+  fetchInstancesBySeriesId,
+  type InstanceSearchParams,
+  type InstancePageResponse,
+} from './instanceService'
 
 // DICOMweb 서비스 (QIDO-RS, WADO-RS)
 export {

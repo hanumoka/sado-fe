@@ -23,13 +23,13 @@ export function adaptDicomWebSeries(
   dbId?: number
 ): Series {
   return {
-    id: dbId ? String(dbId) : dicom['0020000E']?.Value[0] || '',
-    seriesInstanceUid: dicom['0020000E']?.Value[0] || '',
+    id: dbId ? String(dbId) : dicom['0020000E']?.Value?.[0] ?? '',
+    seriesInstanceUid: dicom['0020000E']?.Value?.[0] ?? '',
     studyId,  // ✅ 매개변수로 전달받음
-    modality: dicom['00080060']?.Value[0] || '',
-    seriesNumber: parseInt(dicom['00200011']?.Value[0] || '0'),
-    seriesDescription: dicom['0008103E']?.Value?.[0] || '',
-    instancesCount: parseInt(dicom['00201209']?.Value[0] || '0'),
+    modality: dicom['00080060']?.Value?.[0] ?? '',
+    seriesNumber: parseInt(dicom['00200011']?.Value?.[0] ?? '0'),
+    seriesDescription: dicom['0008103E']?.Value?.[0] ?? '',
+    instancesCount: parseInt(dicom['00201209']?.Value?.[0] ?? '0'),
   }
 }
 
@@ -56,13 +56,13 @@ export function adaptDicomWebInstance(
   storageUri: string,
   dbId?: number
 ): Instance {
-  const sopInstanceUid = dicom['00080018']?.Value[0] || ''
+  const sopInstanceUid = dicom['00080018']?.Value?.[0] ?? ''
 
   return {
     id: dbId ? String(dbId) : sopInstanceUid,
     sopInstanceUid: sopInstanceUid,
     seriesId,  // ✅ 매개변수로 전달받음
-    instanceNumber: parseInt(dicom['00200013']?.Value[0] || '0'),
+    instanceNumber: parseInt(dicom['00200013']?.Value?.[0] ?? '0'),
     storageUri,  // ✅ 매개변수로 전달받음
   }
 }

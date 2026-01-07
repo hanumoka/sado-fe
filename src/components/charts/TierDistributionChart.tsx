@@ -17,14 +17,14 @@ interface TierDistributionChartProps {
   distribution: TierDistribution
 }
 
-// Recharts Pie Label Props 타입 정의
+// Recharts Pie Label Props 타입 정의 (PieLabelRenderProps와 호환)
 interface PieLabelProps {
-  cx: number
-  cy: number
-  midAngle: number
-  innerRadius: number
-  outerRadius: number
-  percent: number
+  cx?: number
+  cy?: number
+  midAngle?: number
+  innerRadius?: number
+  outerRadius?: number
+  percent?: number
   index?: number
 }
 
@@ -54,6 +54,12 @@ export default function TierDistributionChart({
     outerRadius,
     percent,
   }: PieLabelProps) => {
+    // 필수 값 체크
+    if (cx === undefined || cy === undefined || midAngle === undefined ||
+        innerRadius === undefined || outerRadius === undefined || percent === undefined) {
+      return null
+    }
+
     const RADIAN = Math.PI / 180
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5
     const x = cx + radius * Math.cos(-midAngle * RADIAN)

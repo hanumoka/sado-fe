@@ -3,19 +3,54 @@
  *
  * Study 관련 API 서비스
  *
- * 목적:
- * - Hook에서 데이터 로직 분리
- * - Backend DICOMweb API 연동
+ * Backend REST API 사용 (/api/studies, /api/series)
+ * - uuid 필드 포함
+ * - patientName 포함
  */
 
 import { api } from '@/lib/api'
 import type { Study, Series } from '@/types'
 import type { StudySearchParams } from '@/features/study/types/study'
-import { adaptDicomWebStudy } from '@/lib/adapters/studyAdapter'
-import { adaptDicomWebSeries } from '@/lib/adapters/seriesAdapter'
 
 /**
- * Study 목록 조회 (DICOMWeb QIDO-RS)
+ * Backend StudyResponse DTO
+ */
+interface StudyResponse {
+  id: number
+  uuid: string | null
+  patientId: number
+  patientName: string | null
+  studyInstanceUid: string
+  studyDate: string | null // ISO date (YYYY-MM-DD)
+  studyDescription: string | null
+  numberOfSeries: number | null
+  numberOfInstances: number | null
+  createdAt: string | null
+  updatedAt: string | null
+  tenantId: number | null
+}
+
+/**
+ * Backend StudyResponse → Frontend Study 변환
+ */
+function adaptStudyResponse(response: StudyResponse): Study {
+  return {
+    id: String(response.id),
+    uuid: response.uuid ?? undefined,
+    studyInstanceUid: response.studyInstanceUid,
+    patientId: String(response.patientId),
+    patientName: response.patientName || 'Unknown',
+    studyDate: response.studyDate || '',
+    studyTime: '', // BE에서 제공하지 않음
+    modality: '', // Study 레벨에서는 없음, Series에서 조회 필요
+    studyDescription: response.studyDescription || '',
+    seriesCount: response.numberOfSeries ?? 0,
+    instancesCount: response.numberOfInstances ?? 0,
+  }
+}
+
+/**
+ * Study 목록 조회 (REST API)
  *
  * @param searchParams - 검색 파라미터
  * @returns Promise<Study[]>
@@ -26,61 +61,103 @@ async function fetchStudiesImpl(
   const params = new URLSearchParams()
 
   if (searchParams?.patientId) {
-    params.append('PatientID', searchParams.patientId)
+    params.append('patientId', searchParams.patientId)
   }
   if (searchParams?.patientName) {
-    params.append('PatientName', searchParams.patientName)
+    params.append('patientName', searchParams.patientName)
   }
   if (searchParams?.studyDate) {
-    params.append('StudyDate', searchParams.studyDate)
+    params.append('studyDate', searchParams.studyDate)
   }
-  if (searchParams?.modality && searchParams.modality !== 'ALL') {
-    params.append('ModalitiesInStudy', searchParams.modality)
-  }
+  // Note: modality 필터는 BE에서 지원하지 않음 (Series 레벨)
 
   const queryString = params.toString()
-  const url = queryString
-    ? `/dicomweb/studies?${queryString}`
-    : '/dicomweb/studies'
+  const url = queryString ? `/api/studies?${queryString}` : '/api/studies'
 
-  const response = await api.get<any[]>(url)
+  const response = await api.get<StudyResponse[]>(url)
 
-  // DICOMweb DTO → Frontend Entity 변환
-  return response.map((dicomStudy) => adaptDicomWebStudy(dicomStudy))
+  if (!response) {
+    return []
+  }
+
+  return response.map(adaptStudyResponse)
 }
 
 /**
- * Study 상세 조회
- * studyId가 StudyInstanceUID인 경우 DICOMweb으로 조회
+ * Study 상세 조회 (REST API)
  *
- * @param studyId - Study Instance UID
+ * @param studyId - Study ID (내부 PK)
  * @returns Promise<Study | null>
  */
 async function fetchStudyByIdImpl(studyId: string): Promise<Study | null> {
-  // DICOMweb QIDO-RS로 StudyInstanceUID 기반 조회
-  const studies = await api.get<any[]>(`/dicomweb/studies?StudyInstanceUID=${studyId}`)
+  const response = await api.get<StudyResponse>(`/api/studies/${studyId}`)
 
-  if (studies.length === 0) {
+  if (!response) {
     return null
   }
 
-  return adaptDicomWebStudy(studies[0])
+  return adaptStudyResponse(response)
 }
 
 /**
- * Study의 Series 목록 조회 (DICOMWeb QIDO-RS)
+ * Backend SeriesResponse DTO
+ */
+interface SeriesResponse {
+  id: number
+  uuid: string | null
+  studyId: number
+  studyDescription: string | null
+  patientName: string | null
+  seriesInstanceUid: string
+  modality: string | null
+  seriesDescription: string | null
+  bodyPartExamined: string | null
+  manufacturer: string | null
+  manufacturerModelName: string | null
+  seriesNumber: number | null
+  numberOfInstances: number | null
+  createdAt: string | null
+  updatedAt: string | null
+  tenantId: number | null
+}
+
+/**
+ * Backend SeriesResponse → Frontend Series 변환
+ */
+function adaptSeriesResponse(response: SeriesResponse): Series {
+  return {
+    id: String(response.id),
+    uuid: response.uuid ?? undefined,
+    seriesInstanceUid: response.seriesInstanceUid,
+    studyId: String(response.studyId),
+    studyDescription: response.studyDescription ?? undefined,
+    patientName: response.patientName ?? undefined,
+    seriesNumber: response.seriesNumber ?? 0,
+    modality: response.modality || '',
+    seriesDescription: response.seriesDescription || '',
+    bodyPartExamined: response.bodyPartExamined ?? undefined,
+    manufacturer: response.manufacturer ?? undefined,
+    manufacturerModelName: response.manufacturerModelName ?? undefined,
+    instancesCount: response.numberOfInstances ?? 0,
+  }
+}
+
+/**
+ * Study의 Series 목록 조회 (REST API)
  *
- * @param studyId - Study Instance UID
+ * @param studyId - Study ID (내부 PK)
  * @returns Promise<Series[]>
  */
 async function fetchSeriesByStudyIdImpl(studyId: string): Promise<Series[]> {
-  const response = await api.get<any[]>(`/dicomweb/studies/${studyId}/series`)
+  const response = await api.get<SeriesResponse[]>(
+    `/api/series?studyId=${studyId}`
+  )
 
-  // DICOMweb DTO → Frontend Entity 변환
-  return response.map((dicomSeries) => {
-    // Adapter 호출 시 studyId 전달
-    return adaptDicomWebSeries(dicomSeries, studyId)
-  })
+  if (!response) {
+    return []
+  }
+
+  return response.map(adaptSeriesResponse)
 }
 
 // Export

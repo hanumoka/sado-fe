@@ -28,6 +28,7 @@ import type {
  */
 async function fetchDashboardSummaryImpl(): Promise<DashboardSummary> {
   const response = await api.get<DashboardSummary>('/api/admin/dashboard/summary')
+  if (!response) throw new Error('No response from server')
   return response
 }
 
@@ -38,6 +39,7 @@ async function fetchDashboardSummaryImpl(): Promise<DashboardSummary> {
  */
 async function fetchStorageMetricsImpl(): Promise<StorageSummary> {
   const response = await api.get<StorageSummary>('/api/admin/metrics/storage')
+  if (!response) throw new Error('No response from server')
   return response
 }
 
@@ -48,6 +50,7 @@ async function fetchStorageMetricsImpl(): Promise<StorageSummary> {
  */
 async function fetchTierDistributionImpl(): Promise<TierDistribution> {
   const response = await api.get<TierDistribution>('/api/admin/metrics/tier-distribution')
+  if (!response) throw new Error('No response from server')
   return response
 }
 
@@ -73,6 +76,7 @@ async function fetchTieringFilesImpl(
   const response = await api.get<PageResponse<FileAssetSummary>>(
     `/api/admin/tiering/files?${params.toString()}`
   )
+  if (!response) throw new Error('No response from server')
   return response
 }
 
@@ -83,6 +87,7 @@ async function fetchTieringFilesImpl(
  */
 async function fetchTieringPoliciesImpl(): Promise<TieringPolicies> {
   const response = await api.get<TieringPolicies>('/api/admin/tiering/policies')
+  if (!response) throw new Error('No response from server')
   return response
 }
 
@@ -95,7 +100,7 @@ async function fetchStorageByCategoryImpl(): Promise<CategoryStorageMetrics[]> {
   const response = await api.get<CategoryStorageMetrics[]>(
     '/api/admin/metrics/storage-by-category'
   )
-  return response
+  return response ?? []
 }
 
 /**
@@ -122,6 +127,7 @@ async function fetchSeaweedFSCapacityImpl(): Promise<SeaweedFSCapacity> {
   const response = await api.get<SeaweedFSCapacity>(
     '/api/admin/seaweedfs/capacity'
   )
+  if (!response) throw new Error('No response from server')
   return response
 }
 

@@ -1,14 +1,24 @@
-import { useState, useEffect } from 'react'
+/**
+ * DicomViewerPage - Cornerstone 기반 Series Viewer
+ *
+ * 레이아웃 구조:
+ * - Header: 뒤로가기 + Series 정보 + 그리드 선택
+ * - Main: 왼쪽(Viewer Grid 70%) + 오른쪽(Instance 목록 30%)
+ * - Footer: Global Playback Controller
+ *
+ * Cornerstone.js 기반 WADO-RS Rendered API 사용
+ * 프리로딩 + requestAnimationFrame cine 재생
+ */
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Play, Pause, Loader2, AlertCircle } from 'lucide-react'
+import { RenderingEngine } from '@cornerstonejs/core'
 import { useInstances } from '@/features/dicom-viewer/hooks/useInstances'
+import { useCornerstoneMultiViewerStore } from '@/features/dicom-viewer/stores'
+import { CornerstoneSlot } from '@/features/dicom-viewer/components'
+import { initCornerstone } from '@/lib/cornerstone/initCornerstone'
 import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'
-
-interface SlotState {
-  isPlaying: boolean
-  currentFrame: number
-  imageError?: boolean
-}
+import type { InstanceSummary } from '@/features/dicom-viewer/types/multiSlotViewer'
 
 type GridLayout = '1x1' | '2x2' | '3x3' | '4x4'
 
@@ -19,14 +29,8 @@ const LAYOUT_OPTIONS: { value: GridLayout; label: string; slots: number }[] = [
   { value: '4x4', label: '4×4', slots: 16 },
 ]
 
-/**
- * DicomViewerPage - Series Viewer 레이아웃
- *
- * 레이아웃 구조:
- * - Header: 뒤로가기 + Series 정보 + 그리드 선택
- * - Main: 왼쪽(Viewer Grid 70%) + 오른쪽(Instance 목록 30%)
- * - Footer: Global Playback Controller
- */
+const RENDERING_ENGINE_ID = 'dicomViewerPageEngine'
+
 export default function DicomViewerPage() {
   const { studyInstanceUid, seriesInstanceUid } = useParams<{
     studyInstanceUid: string
@@ -34,6 +38,13 @@ export default function DicomViewerPage() {
   }>()
   const navigate = useNavigate()
   const [layout, setLayout] = useState<GridLayout>('2x2')
+  const [isInitialized, setIsInitialized] = useState(false)
+  const renderingEngineRef = useRef<RenderingEngine | null>(null)
+
+  // 현재 선택된 슬롯 (썸네일 클릭 시 이 슬롯에 할당)
+  const [selectedSlot, setSelectedSlot] = useState<number>(0)
+  // 썸네일 이미지 에러 상태
+  const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, boolean>>({})
 
   // WADO-RS로 Instance 목록 조회
   const { data, isLoading, error } = useInstances(
@@ -41,160 +52,135 @@ export default function DicomViewerPage() {
     seriesInstanceUid || ''
   )
 
-  // 슬롯별 상태 (재생 여부 + 현재 프레임)
-  const [slotStates, setSlotStates] = useState<Record<number, SlotState>>({})
-  // FPS 설정
-  const [fps, setFps] = useState(30)
-  // 슬롯 할당: 슬롯 인덱스 → Instance 인덱스 (null이면 기본값 사용)
-  const [slotAssignments, setSlotAssignments] = useState<Record<number, number | null>>({})
-  // 현재 선택된 슬롯 (썸네일 클릭 시 이 슬롯에 할당)
-  const [selectedSlot, setSelectedSlot] = useState<number>(0)
-  // 썸네일 이미지 에러 상태
-  const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, boolean>>({})
+  // Cornerstone store
+  const {
+    globalFps,
+    setGlobalFps,
+    setLayout: setStoreLayout,
+    assignInstanceToSlot,
+    playAll,
+    pauseAll,
+    clearAllSlots,
+  } = useCornerstoneMultiViewerStore()
+
+  const instances = data?.instances || []
+  const currentLayoutSlots = LAYOUT_OPTIONS.find((o) => o.value === layout)?.slots || 1
+
+  // ==================== Cornerstone 초기화 ====================
+
+  useEffect(() => {
+    let mounted = true
+
+    const init = async () => {
+      try {
+        await initCornerstone()
+
+        if (mounted && !renderingEngineRef.current) {
+          renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
+          setIsInitialized(true)
+          console.log('[DicomViewerPage] Cornerstone initialized')
+        }
+      } catch (error) {
+        console.error('[DicomViewerPage] Cornerstone initialization failed:', error)
+      }
+    }
+
+    init()
+
+    return () => {
+      mounted = false
+      if (renderingEngineRef.current) {
+        renderingEngineRef.current.destroy()
+        renderingEngineRef.current = null
+      }
+      // 페이지 떠날 때 슬롯 초기화
+      clearAllSlots()
+    }
+  }, [clearAllSlots])
+
+  // ==================== 인스턴스 목록 로드 시 자동 슬롯 할당 ====================
+
+  useEffect(() => {
+    if (!isInitialized || !instances.length || !studyInstanceUid || !seriesInstanceUid) return
+
+    // Store layout 동기화 (assignInstanceToSlot의 maxSlots 검사를 위해 필요)
+    setStoreLayout(layout)
+
+    // 인스턴스 목록이 로드되면 첫 N개를 슬롯에 자동 할당
+    instances.slice(0, currentLayoutSlots).forEach((instance, index) => {
+      const instanceSummary: InstanceSummary = {
+        sopInstanceUid: instance.sopInstanceUid,
+        studyInstanceUid: studyInstanceUid,
+        seriesInstanceUid: seriesInstanceUid,
+        numberOfFrames: instance.numberOfFrames || 1,
+      }
+      assignInstanceToSlot(index, instanceSummary)
+    })
+  }, [isInitialized, instances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, layout, setStoreLayout])
+
+  // ==================== 핸들러 ====================
 
   const handleBack = () => {
     navigate(-1)
   }
 
-  // 슬롯 재생/일시정지 토글
-  const toggleSlotPlay = (slotId: number) => {
-    setSlotStates((prev) => {
-      const current = prev[slotId] || { isPlaying: false, currentFrame: 1 }
-      return {
-        ...prev,
-        [slotId]: {
-          ...current,
-          isPlaying: !current.isPlaying,
-        },
-      }
-    })
-  }
-
-  // 전체 재생
-  const playAll = () => {
-    const slots = LAYOUT_OPTIONS.find((o) => o.value === layout)?.slots || 1
-    setSlotStates((prev) => {
-      const newState = { ...prev }
-      for (let i = 0; i < slots; i++) {
-        const instance = getSlotInstance(i)
-        const isMultiframe = (instance?.numberOfFrames || 1) > 1
-        if (instance && isMultiframe) {
-          newState[i] = {
-            isPlaying: true,
-            currentFrame: prev[i]?.currentFrame || 1,
-          }
-        }
-      }
-      return newState
-    })
-  }
-
-  // 전체 일시정지
-  const pauseAll = () => {
-    setSlotStates((prev) => {
-      const newState = { ...prev }
-      Object.keys(newState).forEach((key) => {
-        newState[Number(key)] = {
-          ...newState[Number(key)],
-          isPlaying: false,
-        }
-      })
-      return newState
-    })
-  }
-
-  // 슬롯 이미지 에러 핸들러
-  const handleSlotImageError = (slotId: number) => {
-    setSlotStates((prev) => ({
-      ...prev,
-      [slotId]: {
-        ...(prev[slotId] || { isPlaying: false, currentFrame: 1 }),
-        imageError: true,
-      },
-    }))
-  }
-
-  // 슬롯 이미지 로드 성공 핸들러 (에러 상태 초기화)
-  const handleSlotImageLoad = (slotId: number) => {
-    setSlotStates((prev) => {
-      if (prev[slotId]?.imageError) {
-        return {
-          ...prev,
-          [slotId]: {
-            ...prev[slotId],
-            imageError: false,
-          },
-        }
-      }
-      return prev
-    })
-  }
-
   // 썸네일 클릭 → 선택된 슬롯에 할당
-  const handleThumbnailClick = (instanceIndex: number) => {
-    setSlotAssignments((prev) => ({
-      ...prev,
-      [selectedSlot]: instanceIndex,
-    }))
-    // 에러 상태 초기화
-    setSlotStates((prev) => ({
-      ...prev,
-      [selectedSlot]: {
-        isPlaying: false,
-        currentFrame: 1,
-        imageError: false,
-      },
-    }))
+  const handleThumbnailClick = useCallback((instanceIndex: number) => {
+    const instance = instances[instanceIndex]
+    if (!instance || !studyInstanceUid || !seriesInstanceUid) return
+
+    const instanceSummary: InstanceSummary = {
+      sopInstanceUid: instance.sopInstanceUid,
+      studyInstanceUid: studyInstanceUid,
+      seriesInstanceUid: seriesInstanceUid,
+      numberOfFrames: instance.numberOfFrames || 1,
+    }
+
+    assignInstanceToSlot(selectedSlot, instanceSummary)
+
     // 다음 슬롯 선택 (순환)
     setSelectedSlot((prev) => (prev + 1) % currentLayoutSlots)
-  }
+  }, [instances, studyInstanceUid, seriesInstanceUid, selectedSlot, currentLayoutSlots, assignInstanceToSlot])
 
   // 슬롯 클릭 → 해당 슬롯 선택
   const handleSlotClick = (slotId: number) => {
     setSelectedSlot(slotId)
   }
 
-  // 슬롯에 할당된 Instance 가져오기
-  const getSlotInstance = (slotId: number) => {
-    const assignedIndex = slotAssignments[slotId]
-    if (assignedIndex !== undefined && assignedIndex !== null) {
-      return instances[assignedIndex]
+  // 레이아웃 변경 시 슬롯 재할당
+  const handleLayoutChange = (newLayout: GridLayout) => {
+    setLayout(newLayout)
+    setStoreLayout(newLayout) // Store layout도 업데이트 (assignInstanceToSlot의 maxSlots 검사에 필요)
+    const newSlots = LAYOUT_OPTIONS.find((o) => o.value === newLayout)?.slots || 1
+
+    // 새 레이아웃에 맞게 인스턴스 재할당
+    if (instances.length && studyInstanceUid && seriesInstanceUid) {
+      instances.slice(0, newSlots).forEach((instance, index) => {
+        const instanceSummary: InstanceSummary = {
+          sopInstanceUid: instance.sopInstanceUid,
+          studyInstanceUid: studyInstanceUid,
+          seriesInstanceUid: seriesInstanceUid,
+          numberOfFrames: instance.numberOfFrames || 1,
+        }
+        assignInstanceToSlot(index, instanceSummary)
+      })
     }
-    // 기본값: 슬롯 인덱스와 동일한 Instance
-    return instances[slotId]
   }
 
-  const currentLayoutSlots = LAYOUT_OPTIONS.find((o) => o.value === layout)?.slots || 1
-  const instances = data?.instances || []
+  // ==================== 그리드 클래스 ====================
 
-  // 멀티프레임 재생 로직
-  useEffect(() => {
-    const playingSlots = Object.entries(slotStates).filter(
-      ([_, state]) => state.isPlaying
-    )
-
-    if (playingSlots.length === 0) return
-
-    const interval = setInterval(() => {
-      setSlotStates((prev) => {
-        const updated = { ...prev }
-        playingSlots.forEach(([slotIdStr]) => {
-          const slotId = Number(slotIdStr)
-          const instance = getSlotInstance(slotId)
-          const totalFrames = instance?.numberOfFrames || 1
-          const current = updated[slotId]?.currentFrame || 1
-          const nextFrame = current >= totalFrames ? 1 : current + 1
-          updated[slotId] = {
-            ...updated[slotId],
-            currentFrame: nextFrame,
-          }
-        })
-        return updated
-      })
-    }, 1000 / fps)
-
-    return () => clearInterval(interval)
-  }, [slotStates, fps, instances, slotAssignments])
+  const getGridClass = () => {
+    switch (layout) {
+      case '1x1':
+        return 'grid-cols-1 grid-rows-1'
+      case '2x2':
+        return 'grid-cols-2 grid-rows-2'
+      case '3x3':
+        return 'grid-cols-3 grid-rows-3'
+      case '4x4':
+        return 'grid-cols-4 grid-rows-4'
+    }
+  }
 
   return (
     <div className="fixed inset-0 flex flex-col bg-gray-900">
@@ -224,6 +210,13 @@ export default function DicomViewerPage() {
               <span className="text-sm">Loading...</span>
             </div>
           )}
+
+          {!isInitialized && (
+            <div className="flex items-center gap-2 text-yellow-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Cornerstone 초기화 중...</span>
+            </div>
+          )}
         </div>
 
         {/* 그리드 레이아웃 선택 */}
@@ -233,7 +226,7 @@ export default function DicomViewerPage() {
             {LAYOUT_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
-                onClick={() => setLayout(opt.value)}
+                onClick={() => handleLayoutChange(opt.value)}
                 className={`px-3 py-1.5 text-sm rounded transition-colors ${
                   layout === opt.value
                     ? 'bg-blue-600 text-white'
@@ -251,115 +244,45 @@ export default function DicomViewerPage() {
       <main className="flex-1 flex overflow-hidden">
         {/* 왼쪽: Viewer Grid Panel (70%) */}
         <div className="w-[70%] h-full bg-black border-r border-gray-700 p-1">
-          <div
-            className={`w-full h-full grid gap-1 ${
-              layout === '1x1'
-                ? 'grid-cols-1 grid-rows-1'
-                : layout === '2x2'
-                  ? 'grid-cols-2 grid-rows-2'
-                  : layout === '3x3'
-                    ? 'grid-cols-3 grid-rows-3'
-                    : 'grid-cols-4 grid-rows-4'
-            }`}
-          >
-            {Array.from({ length: currentLayoutSlots }, (_, i) => {
-              const instance = getSlotInstance(i)
-              const slotState = slotStates[i] || { isPlaying: false, currentFrame: 1 }
-              const isPlaying = slotState.isPlaying
-              const currentFrame = slotState.currentFrame
-              const hasError = slotState.imageError
-              const isMultiframe = (instance?.numberOfFrames || 1) > 1
-              const isSelected = selectedSlot === i
+          {isInitialized ? (
+            <div className={`w-full h-full grid gap-1 ${getGridClass()}`}>
+              {Array.from({ length: currentLayoutSlots }, (_, i) => {
+                const isSelected = selectedSlot === i
 
-              return (
-                <div
-                  key={i}
-                  onClick={() => handleSlotClick(i)}
-                  className={`bg-gray-900 rounded border-2 flex flex-col overflow-hidden cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'border-blue-500'
-                      : 'border-gray-700 hover:border-gray-500'
-                  }`}
-                >
-                  {/* Viewer 영역 */}
-                  <div className="flex-1 flex items-center justify-center relative bg-black">
-                    {instance ? (
-                      hasError ? (
-                        // 에러 폴백 UI
-                        <div className="text-center text-red-400">
-                          <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-                          <p className="text-xs">이미지 로드 실패</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {instance.sopInstanceUid?.slice(0, 16)}...
-                          </p>
-                        </div>
-                      ) : (
-                        <>
-                          <img
-                            src={getRenderedFrameUrl(
-                              studyInstanceUid || '',
-                              seriesInstanceUid || '',
-                              instance.sopInstanceUid,
-                              currentFrame
-                            )}
-                            alt={`Instance ${i + 1}, Frame ${currentFrame}`}
-                            className="max-w-full max-h-full object-contain"
-                            loading="lazy"
-                            onError={() => handleSlotImageError(i)}
-                            onLoad={() => handleSlotImageLoad(i)}
-                          />
-                          {/* 프레임 정보 오버레이 */}
-                          {isMultiframe && (
-                            <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-xs text-white">
-                              Frame {currentFrame} / {instance.numberOfFrames}
-                            </div>
-                          )}
-                        </>
-                      )
-                    ) : (
-                      <div className="text-center text-gray-600">
-                        <div className="text-2xl mb-1">+</div>
-                        <p className="text-xs">Empty Slot {i + 1}</p>
-                      </div>
-                    )}
+                return (
+                  <div
+                    key={i}
+                    onClick={() => handleSlotClick(i)}
+                    className={`relative bg-gray-900 rounded border-2 overflow-hidden cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-blue-500'
+                        : 'border-gray-700 hover:border-gray-500'
+                    }`}
+                  >
+                    {/* Cornerstone Slot */}
+                    <CornerstoneSlot
+                      slotId={i}
+                      renderingEngineId={RENDERING_ENGINE_ID}
+                    />
+
                     {/* 선택된 슬롯 표시 */}
                     {isSelected && (
-                      <div className="absolute top-2 right-2 bg-blue-500 px-2 py-0.5 rounded text-xs text-white">
+                      <div className="absolute top-2 right-2 bg-blue-500 px-2 py-0.5 rounded text-xs text-white z-10">
                         선택됨
                       </div>
                     )}
                   </div>
-
-                  {/* 슬롯 개별 컨트롤 */}
-                  <div className="bg-gray-800 px-2 py-1.5 flex items-center justify-between border-t border-gray-700">
-                    <button
-                      onClick={() => toggleSlotPlay(i)}
-                      disabled={!instance || !isMultiframe}
-                      className={`p-1.5 rounded transition-colors ${
-                        !instance || !isMultiframe
-                          ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          : isPlaying
-                            ? 'bg-red-600 hover:bg-red-700 text-white'
-                            : 'bg-green-600 hover:bg-green-700 text-white'
-                      }`}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-3 w-3" />
-                      ) : (
-                        <Play className="h-3 w-3" />
-                      )}
-                    </button>
-
-                    <span className="text-xs text-gray-400">
-                      {instance && isMultiframe
-                        ? `${currentFrame} / ${instance.numberOfFrames}`
-                        : '-'}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-center text-gray-400">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                <p>Cornerstone 초기화 중...</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 오른쪽: Instance List Panel (30%) */}
@@ -457,8 +380,8 @@ export default function DicomViewerPage() {
 
           {/* FPS 선택 */}
           <select
-            value={fps}
-            onChange={(e) => setFps(Number(e.target.value))}
+            value={globalFps}
+            onChange={(e) => setGlobalFps(Number(e.target.value))}
             className="bg-gray-700 text-white px-3 py-2 rounded border border-gray-600"
           >
             <option value={15}>15 FPS</option>

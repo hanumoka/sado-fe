@@ -41,7 +41,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     preloadSlotFrames,
   } = useCornerstoneMultiViewerStore()
 
-  const slot = slots[slotId]
+  const slot = slots[slotId] || { instance: null, currentFrame: 0, isPlaying: false, isPreloading: false, isPreloaded: false, preloadProgress: 0, loading: false, error: null, performanceStats: { fps: 0, avgFps: 0, frameDrops: 0, totalFramesRendered: 0, fpsHistory: [], lastFrameTime: 0 } }
   const viewportId = `cs-slot-${slotId}`
 
   // ==================== Viewport 초기화 ====================
@@ -241,7 +241,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   if (!slot.instance) {
     return (
       <div
-        className="relative bg-gray-800 rounded-lg border-2 border-dashed border-gray-600 flex flex-col items-center justify-center min-h-[200px]"
+        className="relative bg-gray-800 rounded-lg border-2 border-dashed border-gray-600 flex flex-col items-center justify-center w-full h-full"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
@@ -269,7 +269,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   // 로딩 상태
   if (slot.loading) {
     return (
-      <div className="relative bg-gray-900 rounded-lg flex items-center justify-center min-h-[200px]">
+      <div className="relative bg-gray-900 rounded-lg flex items-center justify-center w-full h-full">
         <div className="text-center text-gray-400">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2" />
           <p className="text-sm">Loading...</p>
@@ -281,7 +281,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   // 에러 상태
   if (slot.error) {
     return (
-      <div className="relative bg-red-900/30 rounded-lg border border-red-600 flex items-center justify-center min-h-[200px]">
+      <div className="relative bg-red-900/30 rounded-lg border border-red-600 flex items-center justify-center w-full h-full">
         <div className="text-center text-red-400 p-4">
           <svg
             className="mx-auto h-8 w-8 mb-2"
@@ -305,12 +305,12 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   // 정상 상태: Cornerstone Viewport + Overlay + Controls
   return (
     <div
-      className="relative bg-black rounded-lg overflow-hidden flex flex-col"
+      className="relative bg-black rounded-lg overflow-hidden flex flex-col w-full h-full"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
       {/* Cornerstone Viewport 컨테이너 */}
-      <div className="flex-1 relative min-h-[200px]">
+      <div className="flex-1 relative w-full">
         <div ref={containerRef} className="w-full h-full" onContextMenu={(e) => e.preventDefault()} />
 
         {/* 성능 오버레이 */}

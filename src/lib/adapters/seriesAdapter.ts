@@ -40,6 +40,7 @@ interface DicomWebInstance {
   '00200013'?: { vr?: 'IS'; Value?: [string] }  // InstanceNumber
   '00280010'?: { vr?: 'US'; Value?: [number] }  // Rows
   '00280011'?: { vr?: 'US'; Value?: [number] }  // Columns
+  '00280008'?: { vr?: 'IS'; Value?: [string] }  // NumberOfFrames (멀티프레임)
 }
 
 /**
@@ -57,6 +58,7 @@ export function adaptDicomWebInstance(
   dbId?: number
 ): Instance {
   const sopInstanceUid = dicom['00080018']?.Value?.[0] ?? ''
+  const numberOfFrames = parseInt(dicom['00280008']?.Value?.[0] ?? '1', 10)
 
   return {
     id: dbId ? String(dbId) : sopInstanceUid,
@@ -64,5 +66,6 @@ export function adaptDicomWebInstance(
     seriesId,  // ✅ 매개변수로 전달받음
     instanceNumber: parseInt(dicom['00200013']?.Value?.[0] ?? '0'),
     storageUri,  // ✅ 매개변수로 전달받음
+    numberOfFrames,  // ✅ 멀티프레임 지원
   }
 }

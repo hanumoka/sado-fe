@@ -64,17 +64,19 @@ function getMaxSlots(layout: GridLayout): number {
       return 4
     case '3x3':
       return 9
+    case '4x4':
+      return 16
     default:
       return 1
   }
 }
 
 /**
- * 초기 슬롯 상태 맵 생성 (최대 9개)
+ * 초기 슬롯 상태 맵 생성 (최대 16개)
  */
 function createInitialSlots(): Record<number, CornerstoneSlotState> {
   const slots: Record<number, CornerstoneSlotState> = {}
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 16; i++) {
     slots[i] = createEmptySlotState()
   }
   return slots

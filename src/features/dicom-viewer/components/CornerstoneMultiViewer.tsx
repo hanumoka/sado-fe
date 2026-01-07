@@ -31,6 +31,8 @@ function getGridClass(layout: GridLayout): string {
       return 'grid-cols-2 grid-rows-2'
     case '3x3':
       return 'grid-cols-3 grid-rows-3'
+    case '4x4':
+      return 'grid-cols-4 grid-rows-4'
   }
 }
 
@@ -45,6 +47,8 @@ function getSlotIds(layout: GridLayout): number[] {
       return [0, 1, 2, 3]
     case '3x3':
       return [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    case '4x4':
+      return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
   }
 }
 

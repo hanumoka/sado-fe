@@ -7,8 +7,8 @@
 
 // ==================== 레이아웃 타입 ====================
 
-/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3) */
-export type GridLayout = '1x1' | '2x2' | '3x3'
+/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4) */
+export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4'
 
 /** API 타입 (DICOM 이미지 로딩 방식) */
 export type ApiType = 'wado-rs' | 'wado-uri'
@@ -77,7 +77,7 @@ export interface CornerstoneMultiViewerState {
   apiType: ApiType
   /** 전역 FPS 설정 */
   globalFps: number
-  /** 슬롯 상태 (최대 9개) */
+  /** 슬롯 상태 (최대 16개) */
   slots: Record<number, CornerstoneSlotState>
   /** 사용 가능한 인스턴스 목록 */
   availableInstances: InstanceSummary[]

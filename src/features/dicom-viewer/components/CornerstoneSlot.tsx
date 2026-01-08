@@ -78,6 +78,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
 
   // 전역 상태 및 액션 (slot은 위에서 이미 선언됨)
   const globalFps = useCornerstoneMultiViewerStore((state) => state.globalFps)
+  const allThumbnailsLoaded = useCornerstoneMultiViewerStore((state) => state.allThumbnailsLoaded)
   const assignInstanceToSlot = useCornerstoneMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useCornerstoneMultiViewerStore((state) => state.preloadSlotFrames)
   const viewportId = `cs-slot-${slotId}`
@@ -277,14 +278,22 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId])  // isViewportReady 추가: viewport 생성 후 stack 로드
 
   // ==================== 자동 프리로드 ====================
+  // Phase 2: 썸네일 로딩 완료 후 프리로드 시작 (썸네일 우선 전략)
 
   useEffect(() => {
     if (!instance || isPreloaded || isPreloading) return
     if (instance.numberOfFrames <= 1) return
 
+    // 썸네일 로딩 완료 대기 (썸네일 우선 전략)
+    if (!allThumbnailsLoaded) {
+      if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Waiting for thumbnails before preload`)
+      return
+    }
+
     // 인스턴스 할당 후 자동 프리로드
+    if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Starting preload (thumbnails loaded)`)
     preloadSlotFrames(slotId)
-  }, [instance?.sopInstanceUid, isPreloaded, isPreloading, slotId, preloadSlotFrames])
+  }, [instance?.sopInstanceUid, isPreloaded, isPreloading, allThumbnailsLoaded, slotId, preloadSlotFrames])
 
   // ==================== 프레임 변경 시 뷰포트 업데이트 ====================
   // Phase 2: 재생 중에는 CineAnimationManager가 직접 viewport를 업데이트하므로 스킵

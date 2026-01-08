@@ -135,6 +135,11 @@ interface CornerstoneMultiViewerActions {
 
   // 중앙 집중식 애니메이션 (CineAnimationManager용)
   advanceAllPlayingFrames: () => void
+
+  // 썸네일 로딩 추적
+  setTotalThumbnailCount: (count: number) => void
+  markThumbnailLoaded: (sopInstanceUid: string) => void
+  resetThumbnailTracking: () => void
 }
 
 type CornerstoneMultiViewerStore = CornerstoneMultiViewerState & CornerstoneMultiViewerActions
@@ -215,6 +220,11 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   globalFps: 30,
   slots: createInitialSlots(),
   availableInstances: [],
+
+  // 썸네일 로딩 추적
+  thumbnailsLoaded: new Set<string>(),
+  totalThumbnailCount: 0,
+  allThumbnailsLoaded: false,
 
   // ==================== 레이아웃 관리 ====================
 
@@ -859,5 +869,54 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         },
       }))
     }
+  },
+
+  // ==================== 썸네일 로딩 추적 ====================
+
+  /**
+   * 총 썸네일 개수 설정 (페이지 로드 시 호출)
+   */
+  setTotalThumbnailCount: (count) => {
+    set({
+      totalThumbnailCount: count,
+      thumbnailsLoaded: new Set<string>(),
+      allThumbnailsLoaded: count === 0, // 0개면 즉시 완료
+    })
+    console.log(`[MultiViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
+  },
+
+  /**
+   * 썸네일 로드 완료 마킹 (onLoad/onError 시 호출)
+   */
+  markThumbnailLoaded: (sopInstanceUid) => {
+    const { thumbnailsLoaded, totalThumbnailCount } = get()
+
+    // 이미 마킹된 경우 무시
+    if (thumbnailsLoaded.has(sopInstanceUid)) return
+
+    const newSet = new Set(thumbnailsLoaded)
+    newSet.add(sopInstanceUid)
+
+    const allLoaded = newSet.size >= totalThumbnailCount
+
+    set({
+      thumbnailsLoaded: newSet,
+      allThumbnailsLoaded: allLoaded,
+    })
+
+    if (allLoaded) {
+      console.log(`[MultiViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
+    }
+  },
+
+  /**
+   * 썸네일 추적 리셋 (페이지 이동 시)
+   */
+  resetThumbnailTracking: () => {
+    set({
+      thumbnailsLoaded: new Set<string>(),
+      totalThumbnailCount: 0,
+      allThumbnailsLoaded: false,
+    })
   },
 }))

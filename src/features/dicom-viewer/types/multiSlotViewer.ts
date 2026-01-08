@@ -81,6 +81,12 @@ export interface CornerstoneMultiViewerState {
   slots: Record<number, CornerstoneSlotState>
   /** 사용 가능한 인스턴스 목록 */
   availableInstances: InstanceSummary[]
+  /** 썸네일 로딩 완료된 인스턴스 (sopInstanceUid Set) */
+  thumbnailsLoaded: Set<string>
+  /** 총 썸네일 개수 */
+  totalThumbnailCount: number
+  /** 모든 썸네일 로딩 완료 여부 */
+  allThumbnailsLoaded: boolean
 }
 
 // ==================== 드래그 앤 드롭 ====================

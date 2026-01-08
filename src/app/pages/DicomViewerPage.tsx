@@ -73,6 +73,10 @@ export default function DicomViewerPage() {
     pauseAll,
     stopAll,
     clearAllSlots,
+    // 썸네일 로딩 추적
+    setTotalThumbnailCount,
+    markThumbnailLoaded,
+    resetThumbnailTracking,
   } = useCornerstoneMultiViewerStore()
 
   const instances = data?.instances || []
@@ -91,6 +95,21 @@ export default function DicomViewerPage() {
     instances.filter((inst) => (inst.numberOfFrames || 1) > 1).length
   , [instances])
   const totalCount = instances.length
+
+  // ==================== 썸네일 로딩 추적 ====================
+  // 필터링된 인스턴스 개수가 변경되면 썸네일 총 개수 설정
+  useEffect(() => {
+    if (filteredInstances.length > 0) {
+      setTotalThumbnailCount(filteredInstances.length)
+    }
+  }, [filteredInstances.length, setTotalThumbnailCount])
+
+  // 페이지 언마운트 시 썸네일 추적 리셋
+  useEffect(() => {
+    return () => {
+      resetThumbnailTracking()
+    }
+  }, [resetThumbnailTracking])
 
   // ==================== Cornerstone 초기화 ====================
   // React StrictMode에서 useEffect가 두 번 실행되는 문제 대응
@@ -417,8 +436,11 @@ export default function DicomViewerPage() {
                           )}
                           alt={`Instance ${index + 1}`}
                           className="w-full h-full object-cover"
-                          loading="lazy"
-                          onError={() => setThumbnailErrors(prev => ({ ...prev, [instance.sopInstanceUid]: true }))}
+                          onLoad={() => markThumbnailLoaded(instance.sopInstanceUid)}
+                          onError={() => {
+                            setThumbnailErrors(prev => ({ ...prev, [instance.sopInstanceUid]: true }))
+                            markThumbnailLoaded(instance.sopInstanceUid) // 에러도 "완료"로 처리
+                          }}
                         />
                       )}
                       {/* 인덱스 배지 */}

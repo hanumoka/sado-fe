@@ -21,6 +21,13 @@ const imageMetadataCache = new Map<string, {
   samplesPerPixel: number
 }>()
 
+// ==================== 이미지 캐시 (재요청 방지) ====================
+// imageId → IImage 객체 캐시
+const imageCache = new Map<string, Types.IImage>()
+
+// 진행 중인 로드 요청 (중복 요청 방지)
+const pendingLoads = new Map<string, Promise<Types.IImage>>()
+
 interface WadoRsRenderedImageId {
   studyInstanceUid: string
   seriesInstanceUid: string
@@ -106,11 +113,44 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
 
 
 /**
- * WADO-RS Rendered API에서 이미지 로드
+ * WADO-RS Rendered API에서 이미지 로드 (캐시 지원)
  */
 async function loadImageAsync(imageId: string): Promise<Types.IImage> {
   if (DEBUG_LOADER) console.log('[wadors-rendered] loadImageAsync called:', imageId)
 
+  // 1. 캐시 확인
+  const cached = imageCache.get(imageId)
+  if (cached) {
+    if (DEBUG_LOADER) console.log('[wadors-rendered] Cache HIT:', imageId)
+    return cached
+  }
+
+  // 2. 진행 중인 요청 확인 (중복 요청 방지)
+  const pending = pendingLoads.get(imageId)
+  if (pending) {
+    if (DEBUG_LOADER) console.log('[wadors-rendered] Pending request joined:', imageId)
+    return pending
+  }
+
+  // 3. 새 로드 요청 생성
+  const loadPromise = loadImageFromNetwork(imageId)
+  pendingLoads.set(imageId, loadPromise)
+
+  try {
+    const image = await loadPromise
+    // 캐시에 저장
+    imageCache.set(imageId, image)
+    if (DEBUG_LOADER) console.log('[wadors-rendered] Cached:', imageId, 'Total cached:', imageCache.size)
+    return image
+  } finally {
+    pendingLoads.delete(imageId)
+  }
+}
+
+/**
+ * 네트워크에서 실제 이미지 로드 (내부 함수)
+ */
+async function loadImageFromNetwork(imageId: string): Promise<Types.IImage> {
   const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber } =
     parseImageId(imageId)
 
@@ -344,6 +384,45 @@ export function createWadoRsRenderedImageIds(
     )
   }
   return imageIds
+}
+
+// ==================== 캐시 관리 유틸리티 ====================
+
+/**
+ * 이미지 캐시 클리어
+ */
+export function clearImageCache(): void {
+  const prevSize = imageCache.size
+  imageCache.clear()
+  pendingLoads.clear()
+  console.log(`[wadors-rendered] Image cache cleared (was ${prevSize} items)`)
+}
+
+/**
+ * 캐시 통계 반환
+ */
+export function getImageCacheStats(): { size: number; pendingCount: number } {
+  return {
+    size: imageCache.size,
+    pendingCount: pendingLoads.size,
+  }
+}
+
+/**
+ * 특정 인스턴스의 캐시 삭제
+ */
+export function clearInstanceCache(sopInstanceUid: string): number {
+  let cleared = 0
+  for (const key of imageCache.keys()) {
+    if (key.includes(sopInstanceUid)) {
+      imageCache.delete(key)
+      cleared++
+    }
+  }
+  if (cleared > 0) {
+    console.log(`[wadors-rendered] Cleared ${cleared} cached frames for instance: ${sopInstanceUid}`)
+  }
+  return cleared
 }
 
 export { SCHEME as WADORS_RENDERED_SCHEME }

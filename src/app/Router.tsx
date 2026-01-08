@@ -8,6 +8,8 @@ import SeriesListPage from '@/app/pages/SeriesListPage'
 import InstanceListPage from '@/app/pages/InstanceListPage'
 import UploadPage from '@/app/pages/UploadPage'
 import DicomViewerPage from '@/app/pages/DicomViewerPage'
+import WadoRsViewerPage from '@/app/pages/WadoRsViewerPage'
+import WadoUriViewerPage from '@/app/pages/WadoUriViewerPage'
 import MultiSlotViewerPage from '@/app/pages/MultiSlotViewerPage'
 import NotFoundPage from '@/app/pages/NotFoundPage'
 import SeaweedFSManagePage from '@/app/pages/admin/SeaweedFSManagePage'
@@ -54,6 +56,12 @@ export default function Router() {
 
         {/* DICOM Viewer POC: WADO-RS Rendered (Full Screen - Layout 밖) */}
         <Route path="/viewer/wado-rs-rendered/:studyInstanceUid/:seriesInstanceUid" element={<DicomViewerPage />} />
+
+        {/* DICOM Viewer POC: WADO-RS (Full Screen - Layout 밖) */}
+        <Route path="/viewer/wado-rs/:studyInstanceUid/:seriesInstanceUid" element={<WadoRsViewerPage />} />
+
+        {/* DICOM Viewer POC: WADO-URI (Full Screen - Layout 밖) */}
+        <Route path="/viewer/wado-uri/:studyInstanceUid/:seriesInstanceUid" element={<WadoUriViewerPage />} />
 
         {/* Multi-Slot DICOM Viewer (Full Screen - Layout 밖) */}
         <Route path="/multi-viewer" element={<MultiSlotViewerPage />} />

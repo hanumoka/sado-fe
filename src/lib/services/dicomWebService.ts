@@ -6,11 +6,34 @@
  * 표준 DICOMweb API를 통해 DICOM 데이터를 조회합니다.
  * - QIDO-RS: Query (Study, Series, Instance 검색)
  * - WADO-RS: Retrieve (메타데이터, DICOM 파일 다운로드)
+ * - 멀티테넌시 지원 (X-Tenant-Id 헤더 자동 추가)
  *
  * @see https://www.dicomstandard.org/using/dicomweb
  */
 
+import { getTenantId } from '../tenantStore'
+
 const DICOMWEB_BASE_URL = '/dicomweb'
+
+/**
+ * DICOMweb API용 공통 헤더 생성
+ *
+ * @param accept Accept 헤더 값
+ * @returns 헤더 객체
+ */
+function getDicomWebHeaders(accept: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': accept,
+  }
+
+  // 멀티테넌시: X-Tenant-Id 헤더 추가
+  const tenantId = getTenantId()
+  if (tenantId !== undefined && tenantId !== null) {
+    headers['X-Tenant-Id'] = String(tenantId)
+  }
+
+  return headers
+}
 
 /**
  * DICOM JSON 값 타입
@@ -164,9 +187,7 @@ export async function searchStudies(params?: {
   const url = `${DICOMWEB_BASE_URL}/studies${searchParams.toString() ? `?${searchParams}` : ''}`
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom+json',
-    },
+    headers: getDicomWebHeaders('application/dicom+json'),
   })
 
   if (!response.ok) {
@@ -199,9 +220,7 @@ export async function searchSeries(
   const url = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series${searchParams.toString() ? `?${searchParams}` : ''}`
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom+json',
-    },
+    headers: getDicomWebHeaders('application/dicom+json'),
   })
 
   if (!response.ok) {
@@ -235,9 +254,7 @@ export async function searchInstances(
   const url = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances${searchParams.toString() ? `?${searchParams}` : ''}`
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom+json',
-    },
+    headers: getDicomWebHeaders('application/dicom+json'),
   })
 
   if (!response.ok) {
@@ -263,9 +280,7 @@ export async function getStudyMetadata(studyUid: string): Promise<DicomInstance[
   const url = `${DICOMWEB_BASE_URL}/studies/${studyUid}/metadata`
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom+json',
-    },
+    headers: getDicomWebHeaders('application/dicom+json'),
   })
 
   if (!response.ok) {
@@ -290,9 +305,7 @@ export async function getSeriesMetadata(
   const url = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/metadata`
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom+json',
-    },
+    headers: getDicomWebHeaders('application/dicom+json'),
   })
 
   if (!response.ok) {
@@ -319,9 +332,7 @@ export async function getInstanceMetadata(
   const url = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/metadata`
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom+json',
-    },
+    headers: getDicomWebHeaders('application/dicom+json'),
   })
 
   if (!response.ok) {
@@ -367,9 +378,7 @@ export async function retrieveInstance(
   const url = getInstanceUrl(studyUid, seriesUid, sopInstanceUid)
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/dicom',
-    },
+    headers: getDicomWebHeaders('application/dicom'),
   })
 
   if (!response.ok) {
@@ -447,9 +456,7 @@ export async function getRenderedFrame(
 
   try {
     const response = await fetch(url, {
-      headers: {
-        'Accept': 'image/jpeg, image/png',
-      },
+      headers: getDicomWebHeaders('image/jpeg, image/png'),
     })
 
     console.log('[dicomWebService] getRenderedFrame response:', {
@@ -507,9 +514,7 @@ export async function retrieveFrame(
   const url = getFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
 
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/octet-stream',
-    },
+    headers: getDicomWebHeaders('application/octet-stream'),
   })
 
   if (!response.ok) {
@@ -550,17 +555,46 @@ export interface StowRsResponse {
 }
 
 /**
+ * STOW-RS 업로드 옵션
+ */
+export interface StoreInstanceOptions {
+  /**
+   * 테넌트 ID (멀티테넌시)
+   * 지정하지 않으면 서버 기본값(1) 사용
+   */
+  tenantId?: number | string
+  /**
+   * 진행률 콜백 (0-100)
+   */
+  onProgress?: (progress: number) => void
+}
+
+/**
  * STOW-RS: DICOM 파일 업로드
  *
  * @param file DICOM 파일
- * @param onProgress 진행률 콜백 (0-100)
+ * @param options 업로드 옵션 (tenantId, onProgress)
  * @returns StowRsResponse
+ *
+ * @example
+ * // 기본 업로드 (tenant_id = 1)
+ * await storeInstance(file)
+ *
+ * // 특정 테넌트로 업로드
+ * await storeInstance(file, { tenantId: 2 })
+ *
+ * // 진행률 추적과 함께
+ * await storeInstance(file, {
+ *   tenantId: 2,
+ *   onProgress: (progress) => console.log(`${progress}%`)
+ * })
  */
 export async function storeInstance(
   file: File,
-  onProgress?: (progress: number) => void
+  options?: StoreInstanceOptions
 ): Promise<StowRsResponse> {
   const url = `${DICOMWEB_BASE_URL}/studies`
+  const { tenantId, onProgress } = options || {}
 
   // multipart/related 형식으로 전송
   const formData = new FormData()
@@ -630,6 +664,12 @@ export async function storeInstance(
 
     xhr.open('POST', url)
     xhr.setRequestHeader('Accept', 'application/dicom+json')
+
+    // 멀티테넌시: X-Tenant-Id 헤더 설정
+    if (tenantId !== undefined && tenantId !== null) {
+      xhr.setRequestHeader('X-Tenant-Id', String(tenantId))
+    }
+
     xhr.timeout = 120000 // 120초 타임아웃
     xhr.send(formData)
   })

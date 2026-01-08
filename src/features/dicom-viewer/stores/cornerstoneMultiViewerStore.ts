@@ -19,6 +19,8 @@ import type {
 } from '../types/multiSlotViewer'
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
+import { imageLoader } from '@cornerstonejs/core'
+import { createWadoRsRenderedImageId } from '@/lib/cornerstone/wadoRsRenderedLoader'
 
 // ==================== 초기 상태 생성 ====================
 
@@ -97,9 +99,9 @@ interface CornerstoneMultiViewerActions {
   clearAllSlots: () => void
 
   // 개별 슬롯 재생 제어
-  playSlot: (slotId: number) => void
+  playSlot: (slotId: number) => Promise<void>
   pauseSlot: (slotId: number) => void
-  togglePlaySlot: (slotId: number) => void
+  togglePlaySlot: (slotId: number) => Promise<void>
   setSlotFrame: (slotId: number, frameIndex: number) => void
   nextFrameSlot: (slotId: number) => void
   prevFrameSlot: (slotId: number) => void
@@ -107,10 +109,10 @@ interface CornerstoneMultiViewerActions {
   goToLastFrameSlot: (slotId: number) => void
 
   // 글로벌 재생 제어
-  playAll: () => void
+  playAll: () => Promise<void>
   pauseAll: () => void
   stopAll: () => void
-  toggleGlobalPlay: () => void
+  toggleGlobalPlay: () => Promise<void>
 
   // 프리로딩
   preloadSlotFrames: (slotId: number) => Promise<void>
@@ -130,9 +132,79 @@ interface CornerstoneMultiViewerActions {
   getSlotState: (slotId: number) => CornerstoneSlotState
   getActiveSlots: () => number[]
   getMultiframeSlotIds: () => number[]
+
+  // 중앙 집중식 애니메이션 (CineAnimationManager용)
+  advanceAllPlayingFrames: () => void
 }
 
 type CornerstoneMultiViewerStore = CornerstoneMultiViewerState & CornerstoneMultiViewerActions
+
+// ==================== 헬퍼 함수 ====================
+
+/**
+ * 프리로드 완료 대기 (폴링 방식)
+ * @param slotId 슬롯 ID
+ * @param get Zustand getter
+ * @param timeout 최대 대기 시간 (ms), 기본 30초
+ * @param pollInterval 폴링 간격 (ms), 기본 100ms
+ */
+async function waitForPreloadComplete(
+  slotId: number,
+  get: () => CornerstoneMultiViewerStore,
+  timeout = 30000,
+  pollInterval = 100
+): Promise<void> {
+  const startTime = Date.now()
+
+  return new Promise((resolve) => {
+    const checkPreload = () => {
+      const slot = get().slots[slotId]
+
+      // 프리로드 완료
+      if (slot?.isPreloaded) {
+        resolve()
+        return
+      }
+
+      // 프리로드 중이 아닌데 완료도 안됨 → 오류
+      if (!slot?.isPreloading && !slot?.isPreloaded) {
+        resolve() // 오류 상황이지만 재생은 허용
+        return
+      }
+
+      // 타임아웃 체크
+      if (Date.now() - startTime > timeout) {
+        console.warn(`[MultiViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
+        resolve()
+        return
+      }
+
+      // 계속 대기
+      setTimeout(checkPreload, pollInterval)
+    }
+
+    checkPreload()
+  })
+}
+
+/**
+ * 레이아웃에 따른 프리로드 배치 크기 결정
+ * 슬롯 수가 많을수록 배치 크기를 줄여 네트워크 포화 방지
+ */
+function getBatchSizeForLayout(layout: GridLayout): number {
+  switch (layout) {
+    case '1x1':
+      return 6 // 1개 슬롯: 6개 동시 요청
+    case '2x2':
+      return 4 // 4개 슬롯: 순차 프리로드로 4개씩
+    case '3x3':
+      return 3 // 9개 슬롯: 순차 프리로드로 3개씩
+    case '4x4':
+      return 2 // 16개 슬롯: 순차 프리로드로 2개씩
+    default:
+      return 4
+  }
+}
 
 // ==================== Store 구현 ====================
 
@@ -275,13 +347,26 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
   // ==================== 개별 슬롯 재생 제어 ====================
 
-  playSlot: (slotId) => {
+  playSlot: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot?.instance || slot.instance.numberOfFrames <= 1) {
       console.warn(`[MultiViewer] Cannot play slot ${slotId}: no multiframe instance`)
       return
     }
 
+    // 1. 프리로드가 완료되지 않았으면 먼저 프리로드
+    if (!slot.isPreloaded && !slot.isPreloading) {
+      console.log(`[MultiViewer] Starting preload before play for slot ${slotId}`)
+      await get().preloadSlotFrames(slotId)
+    }
+
+    // 2. 프리로드 중이면 완료 대기
+    if (get().slots[slotId]?.isPreloading) {
+      console.log(`[MultiViewer] Waiting for preload to complete for slot ${slotId}`)
+      await waitForPreloadComplete(slotId, get)
+    }
+
+    // 3. 재생 시작
     set((state) => ({
       slots: {
         ...state.slots,
@@ -305,14 +390,14 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     }))
   },
 
-  togglePlaySlot: (slotId) => {
+  togglePlaySlot: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot) return
 
     if (slot.isPlaying) {
       get().pauseSlot(slotId)
     } else {
-      get().playSlot(slotId)
+      await get().playSlot(slotId)
     }
   },
 
@@ -367,16 +452,50 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
   // ==================== 글로벌 재생 제어 ====================
 
-  playAll: () => {
+  playAll: async () => {
     const { slots, layout } = get()
     const maxSlots = getMaxSlots(layout)
-    const updatedSlots: Record<number, CornerstoneSlotState> = {}
 
+    // 1. 멀티프레임 슬롯 ID 수집
+    const multiframeSlotIds: number[] = []
     for (let i = 0; i < maxSlots; i++) {
       const slot = slots[i]
-      // 멀티프레임 인스턴스만 재생
       if (slot?.instance && slot.instance.numberOfFrames > 1) {
-        updatedSlots[i] = {
+        multiframeSlotIds.push(i)
+      }
+    }
+
+    if (multiframeSlotIds.length === 0) {
+      console.warn('[MultiViewer] No multiframe slots to play')
+      return
+    }
+
+    // 2. 순차 프리로드 (네트워크 포화 방지)
+    console.log(`[MultiViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
+    for (const slotId of multiframeSlotIds) {
+      const slot = get().slots[slotId]
+      // 이미 프리로드 완료된 슬롯은 스킵
+      if (slot?.isPreloaded) {
+        console.log(`[MultiViewer] Slot ${slotId} already preloaded, skipping`)
+        continue
+      }
+      // 프리로드 진행 중인 슬롯은 완료 대기
+      if (slot?.isPreloading) {
+        console.log(`[MultiViewer] Waiting for slot ${slotId} preload to complete`)
+        await waitForPreloadComplete(slotId, get)
+      } else {
+        // 프리로드 시작 및 완료 대기
+        console.log(`[MultiViewer] Starting preload for slot ${slotId}`)
+        await get().preloadSlotFrames(slotId)
+      }
+    }
+
+    // 3. 모든 슬롯 재생 시작
+    const updatedSlots: Record<number, CornerstoneSlotState> = {}
+    for (const slotId of multiframeSlotIds) {
+      const slot = get().slots[slotId]
+      if (slot) {
+        updatedSlots[slotId] = {
           ...slot,
           isPlaying: true,
         }
@@ -389,6 +508,8 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         ...updatedSlots,
       },
     }))
+
+    console.log(`[MultiViewer] playAll started for ${multiframeSlotIds.length} slots`)
   },
 
   pauseAll: () => {
@@ -441,7 +562,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     }))
   },
 
-  toggleGlobalPlay: () => {
+  toggleGlobalPlay: async () => {
     const { slots, layout } = get()
     const maxSlots = getMaxSlots(layout)
 
@@ -453,7 +574,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     if (isAnyPlaying) {
       get().pauseAll()
     } else {
-      get().playAll()
+      await get().playAll()
     }
   },
 
@@ -486,36 +607,38 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
       let loadedCount = 0
-      const BATCH_SIZE = 6 // 동시 로딩 프레임 수
+      const BATCH_SIZE = getBatchSizeForLayout(get().layout) // 레이아웃에 따라 동적 조정
 
-      // 배치 단위로 프레임 로드
+      // Cornerstone imageLoader를 사용하여 직접 캐시에 프리로드
+      // 이전: <img> 태그 → HTTP 캐시만 채움
+      // 변경: imageLoader.loadImage() → Cornerstone 내부 캐시에 저장
+      console.log(`[MultiViewer] Preloading slot ${slotId} with Cornerstone imageLoader (${numberOfFrames} frames, BATCH_SIZE=${BATCH_SIZE})`)
+
       for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
         const batch = []
         for (let j = i; j < Math.min(i + BATCH_SIZE, numberOfFrames); j++) {
+          // Cornerstone imageId 생성 (wadors-rendered 스킴)
+          const imageId = createWadoRsRenderedImageId(
+            studyInstanceUid,
+            seriesInstanceUid,
+            sopInstanceUid,
+            j // 0-based frame number
+          )
+
           batch.push(
-            new Promise<void>((resolve) => {
-              const img = new Image()
-
-              // WADO-RS Rendered API 사용
-              const frameUrl = `/dicomweb/studies/${studyInstanceUid}/series/${seriesInstanceUid}/instances/${sopInstanceUid}/frames/${j + 1}/rendered`
-
-              img.onload = () => {
+            imageLoader
+              .loadImage(imageId)
+              .then(() => {
                 loadedCount++
                 const progress = Math.round((loadedCount / numberOfFrames) * 100)
                 get().updateSlotPreloadProgress(slotId, progress)
-                resolve()
-              }
-
-              img.onerror = () => {
-                console.warn(`[MultiViewer] Failed to preload frame ${j} for slot ${slotId}`)
+              })
+              .catch((error: unknown) => {
+                console.warn(`[MultiViewer] Failed to preload frame ${j} for slot ${slotId}:`, error)
                 loadedCount++
                 const progress = Math.round((loadedCount / numberOfFrames) * 100)
                 get().updateSlotPreloadProgress(slotId, progress)
-                resolve()
-              }
-
-              img.src = frameUrl
-            })
+              })
           )
         }
 
@@ -523,7 +646,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       }
 
       get().finishSlotPreload(slotId)
-      console.log(`[MultiViewer] Preload completed for slot ${slotId}`)
+      console.log(`[MultiViewer] Preload completed for slot ${slotId} (Cornerstone cache populated)`)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)
@@ -692,5 +815,49 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     }
 
     return multiframeSlots
+  },
+
+  // ==================== 중앙 집중식 애니메이션 ====================
+
+  /**
+   * 모든 재생 중인 슬롯의 프레임을 한 번에 업데이트 (CineAnimationManager용)
+   *
+   * 기존 문제:
+   * - 각 슬롯이 독립적인 rAF 루프에서 nextFrameSlot() 호출
+   * - 각 호출마다 Zustand set() → 개별 리렌더링 발생
+   *
+   * 해결:
+   * - 모든 재생 중인 슬롯의 프레임을 한 번의 set()으로 배칭 업데이트
+   * - 리렌더링 1회로 최소화
+   */
+  advanceAllPlayingFrames: () => {
+    const { slots, layout } = get()
+    const maxSlots = getMaxSlots(layout)
+
+    // 재생 중인 슬롯의 프레임 업데이트 수집
+    const updatedSlots: Record<number, CornerstoneSlotState> = {}
+    let hasChanges = false
+
+    for (let i = 0; i < maxSlots; i++) {
+      const slot = slots[i]
+      if (slot?.isPlaying && slot.instance && slot.instance.numberOfFrames > 1) {
+        const nextFrame = (slot.currentFrame + 1) % slot.instance.numberOfFrames
+        updatedSlots[i] = {
+          ...slot,
+          currentFrame: nextFrame,
+        }
+        hasChanges = true
+      }
+    }
+
+    // 변경사항이 있을 때만 단일 set() 호출 (배칭)
+    if (hasChanges) {
+      set((state) => ({
+        slots: {
+          ...state.slots,
+          ...updatedSlots,
+        },
+      }))
+    }
   },
 }))

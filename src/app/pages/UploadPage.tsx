@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Upload as UploadIcon, ArrowRight } from 'lucide-react'
+import { Upload as UploadIcon, ArrowRight, Building2 } from 'lucide-react'
 import UploadDropzone from '@/features/upload/components/UploadDropzone'
 import UploadProgress from '@/features/upload/components/UploadProgress'
 import UploadResult from '@/features/upload/components/UploadResult'
@@ -8,6 +8,8 @@ import FilePreview from '@/features/upload/components/FilePreview'
 import { useUploadDicom } from '@/features/upload/hooks/useUploadDicom'
 import { PageHeader } from '@/components/common'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import type { PreviewFile } from '@/features/upload/types/upload'
 
 /**
@@ -21,6 +23,7 @@ import type { PreviewFile } from '@/features/upload/types/upload'
  * 3. UploadResult (결과 요약)
  * 4. 병렬 업로드 (동시 3개)
  * 5. 실패한 파일 재시도
+ * 6. 멀티테넌시 지원 (Tenant ID 입력)
  */
 export default function UploadPage() {
   const {
@@ -35,6 +38,9 @@ export default function UploadPage() {
   // 프리뷰 모드 상태
   const [previewFiles, setPreviewFiles] = useState<PreviewFile[]>([])
   const [isPreviewMode, setIsPreviewMode] = useState(false)
+
+  // 멀티테넌시: Tenant ID 상태
+  const [tenantId, setTenantId] = useState<string>('1')
 
   // 파일 선택 시 프리뷰 모드로 전환
   const handleFilesSelected = useCallback((files: File[]) => {
@@ -71,8 +77,12 @@ export default function UploadPage() {
   const handlePreviewConfirm = useCallback((selectedFiles: File[]) => {
     setIsPreviewMode(false)
     setPreviewFiles([])
-    uploadDicomFiles(selectedFiles)
-  }, [uploadDicomFiles])
+    // tenantId가 유효한 숫자인 경우에만 전달
+    const parsedTenantId = tenantId.trim() ? parseInt(tenantId, 10) : undefined
+    uploadDicomFiles(selectedFiles, {
+      tenantId: !isNaN(parsedTenantId!) ? parsedTenantId : undefined,
+    })
+  }, [uploadDicomFiles, tenantId])
 
   // 프리뷰 취소
   const handlePreviewCancel = useCallback(() => {
@@ -107,6 +117,36 @@ export default function UploadPage() {
           </li>
           <li>최대 3개 파일이 동시에 업로드됩니다</li>
         </ul>
+      </div>
+
+      {/* 멀티테넌시: Tenant ID 설정 */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Building2 className="h-5 w-5 text-gray-600" />
+          <h3 className="text-sm font-semibold text-gray-900">
+            테넌트 설정 (멀티테넌시)
+          </h3>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex-1 max-w-xs">
+            <Label htmlFor="tenantId" className="text-sm text-gray-600">
+              Tenant ID
+            </Label>
+            <Input
+              id="tenantId"
+              type="number"
+              min="1"
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              placeholder="1"
+              className="mt-1"
+              disabled={isUploading}
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-5">
+            데이터가 저장될 테넌트(병원/기관)를 지정합니다. 기본값: 1
+          </p>
+        </div>
       </div>
 
       {/* 파일 프리뷰 (폴더 선택 후) */}

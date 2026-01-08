@@ -8,10 +8,12 @@
  * - WADO-RS Rendered API 지원
  * - Cine 재생 및 성능 추적
  * - 드래그 앤 드롭 인스턴스 할당
+ * - 인스턴스 목록 사이드바 (전체/재생가능 필터)
  */
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { CornerstoneMultiViewer } from '@/features/dicom-viewer/components'
+import { InstanceSidebar } from '@/features/dicom-viewer/components/InstanceSidebar'
 
 export default function MultiSlotViewerPage() {
   const navigate = useNavigate()
@@ -44,9 +46,15 @@ export default function MultiSlotViewerPage() {
         </div>
       </div>
 
-      {/* 멀티 슬롯 뷰어 */}
-      <div className="flex-1 overflow-hidden">
-        <CornerstoneMultiViewer />
+      {/* 메인 컨텐츠 (사이드바 + 뷰어) */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 인스턴스 사이드바 */}
+        <InstanceSidebar className="w-64 flex-shrink-0 border-r border-gray-700" />
+
+        {/* 멀티 슬롯 뷰어 */}
+        <div className="flex-1 overflow-hidden">
+          <CornerstoneMultiViewer />
+        </div>
       </div>
     </div>
   )

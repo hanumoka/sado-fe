@@ -22,6 +22,7 @@ interface InstanceListProps {
 
 type SortKey =
   | 'id'
+  | 'seriesId'
   | 'sopInstanceUid'
   | 'instanceNumber'
   | 'rows'
@@ -29,6 +30,7 @@ type SortKey =
   | 'fileSize'
   | 'storageTier'
   | 'createdAt'
+  | 'tenantId'
 type SortOrder = 'asc' | 'desc'
 
 interface SortConfig {
@@ -37,7 +39,9 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'tenantId', label: 'Tenant', className: 'w-16' },
   { key: 'id', label: 'ID', className: 'w-16' },
+  { key: 'seriesId', label: 'Series ID', className: 'w-20' },
   { key: 'sopInstanceUid', label: 'SOP Instance UID' },
   { key: 'instanceNumber', label: 'No.', className: 'w-16' },
   { key: 'rows', label: 'Rows', className: 'w-20' },
@@ -134,6 +138,12 @@ export default function InstanceList({
         case 'fileSize':
           comparison = (Number(a[key]) || 0) - (Number(b[key]) || 0)
           break
+        case 'seriesId':
+          comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
+          break
+        case 'tenantId':
+          comparison = (a[key] ?? 0) - (b[key] ?? 0)
+          break
         case 'sopInstanceUid':
         case 'storageTier':
         case 'createdAt':
@@ -190,8 +200,18 @@ export default function InstanceList({
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                   {(currentPage - 1) * pageSize + index + 1}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                    {instance.tenantId ?? '-'}
+                  </span>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {instance.id}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                    {instance.seriesId}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   <div className="flex items-center gap-2">

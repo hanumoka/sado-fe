@@ -9,9 +9,9 @@
  * Cornerstone.js 기반 WADO-RS Rendered API 사용
  * 프리로딩 + requestAnimationFrame cine 재생
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, Loader2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, Loader2, AlertCircle, Film, Image } from 'lucide-react'
 import { RenderingEngine } from '@cornerstonejs/core'
 import { useInstances } from '@/features/dicom-viewer/hooks/useInstances'
 import { useCornerstoneMultiViewerStore } from '@/features/dicom-viewer/stores'
@@ -21,6 +21,7 @@ import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'
 import type { InstanceSummary } from '@/features/dicom-viewer/types/multiSlotViewer'
 
 type GridLayout = '1x1' | '2x2' | '3x3' | '4x4'
+type InstanceFilter = 'all' | 'playable'
 
 const LAYOUT_OPTIONS: { value: GridLayout; label: string; slots: number }[] = [
   { value: '1x1', label: '1×1', slots: 1 },
@@ -45,6 +46,8 @@ export default function DicomViewerPage() {
   const [selectedSlot, setSelectedSlot] = useState<number>(0)
   // 썸네일 이미지 에러 상태
   const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, boolean>>({})
+  // 인스턴스 필터 (기본: 재생가능)
+  const [instanceFilter, setInstanceFilter] = useState<InstanceFilter>('playable')
 
   // WADO-RS로 Instance 목록 조회
   const { data, isLoading, error } = useInstances(
@@ -74,6 +77,20 @@ export default function DicomViewerPage() {
 
   const instances = data?.instances || []
   const currentLayoutSlots = LAYOUT_OPTIONS.find((o) => o.value === layout)?.slots || 1
+
+  // 필터링된 인스턴스 목록
+  const filteredInstances = useMemo(() => {
+    if (instanceFilter === 'playable') {
+      return instances.filter((inst) => (inst.numberOfFrames || 1) > 1)
+    }
+    return instances
+  }, [instances, instanceFilter])
+
+  // 통계
+  const playableCount = useMemo(() =>
+    instances.filter((inst) => (inst.numberOfFrames || 1) > 1).length
+  , [instances])
+  const totalCount = instances.length
 
   // ==================== Cornerstone 초기화 ====================
   // React StrictMode에서 useEffect가 두 번 실행되는 문제 대응
@@ -130,13 +147,13 @@ export default function DicomViewerPage() {
     // DEBUG: 자동 할당 조건 확인
     console.log('[DicomViewerPage] Auto-assign effect check:', {
       isInitialized,
-      instancesLength: instances.length,
+      filteredInstancesLength: filteredInstances.length,
       studyInstanceUid: !!studyInstanceUid,
       seriesInstanceUid: !!seriesInstanceUid,
       currentLayoutSlots,
     })
 
-    if (!isInitialized || !instances.length || !studyInstanceUid || !seriesInstanceUid) {
+    if (!isInitialized || !filteredInstances.length || !studyInstanceUid || !seriesInstanceUid) {
       console.log('[DicomViewerPage] Auto-assign skipped - conditions not met')
       return
     }
@@ -146,8 +163,8 @@ export default function DicomViewerPage() {
     // Store layout 동기화 (assignInstanceToSlot의 maxSlots 검사를 위해 필요)
     setStoreLayout(layout)
 
-    // 인스턴스 목록이 로드되면 첫 N개를 슬롯에 자동 할당
-    instances.slice(0, currentLayoutSlots).forEach((instance, index) => {
+    // 필터링된 인스턴스 목록에서 첫 N개를 슬롯에 자동 할당
+    filteredInstances.slice(0, currentLayoutSlots).forEach((instance, index) => {
       const instanceSummary: InstanceSummary = {
         sopInstanceUid: instance.sopInstanceUid,
         studyInstanceUid: studyInstanceUid,
@@ -159,7 +176,7 @@ export default function DicomViewerPage() {
     })
 
     console.log('[DicomViewerPage] Auto-assign completed')
-  }, [isInitialized, instances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, layout, setStoreLayout])
+  }, [isInitialized, filteredInstances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, layout, setStoreLayout])
 
   // ==================== 핸들러 ====================
 
@@ -169,7 +186,7 @@ export default function DicomViewerPage() {
 
   // 썸네일 클릭 → 선택된 슬롯에 할당
   const handleThumbnailClick = useCallback((instanceIndex: number) => {
-    const instance = instances[instanceIndex]
+    const instance = filteredInstances[instanceIndex]
     if (!instance || !studyInstanceUid || !seriesInstanceUid) return
 
     const instanceSummary: InstanceSummary = {
@@ -183,7 +200,7 @@ export default function DicomViewerPage() {
 
     // 다음 슬롯 선택 (순환)
     setSelectedSlot((prev) => (prev + 1) % currentLayoutSlots)
-  }, [instances, studyInstanceUid, seriesInstanceUid, selectedSlot, currentLayoutSlots, assignInstanceToSlot])
+  }, [filteredInstances, studyInstanceUid, seriesInstanceUid, selectedSlot, currentLayoutSlots, assignInstanceToSlot])
 
   // 슬롯 클릭 → 해당 슬롯 선택
   const handleSlotClick = (slotId: number) => {
@@ -196,9 +213,9 @@ export default function DicomViewerPage() {
     setStoreLayout(newLayout) // Store layout도 업데이트 (assignInstanceToSlot의 maxSlots 검사에 필요)
     const newSlots = LAYOUT_OPTIONS.find((o) => o.value === newLayout)?.slots || 1
 
-    // 새 레이아웃에 맞게 인스턴스 재할당
-    if (instances.length && studyInstanceUid && seriesInstanceUid) {
-      instances.slice(0, newSlots).forEach((instance, index) => {
+    // 새 레이아웃에 맞게 필터링된 인스턴스 재할당
+    if (filteredInstances.length && studyInstanceUid && seriesInstanceUid) {
+      filteredInstances.slice(0, newSlots).forEach((instance, index) => {
         const instanceSummary: InstanceSummary = {
           sopInstanceUid: instance.sopInstanceUid,
           studyInstanceUid: studyInstanceUid,
@@ -331,8 +348,32 @@ export default function DicomViewerPage() {
         {/* 오른쪽: Instance List Panel (30%) */}
         <div className="w-[30%] h-full bg-gray-800 flex flex-col">
           <div className="p-3 border-b border-gray-700">
-            <h2 className="text-white font-medium">Instance 목록</h2>
-            <p className="text-gray-400 text-sm">{instances.length} images</p>
+            <h2 className="text-white font-medium mb-2">Instance 목록</h2>
+            {/* 필터 버튼 */}
+            <div className="flex gap-1">
+              <button
+                onClick={() => setInstanceFilter('playable')}
+                className={`flex-1 px-2 py-1.5 text-xs rounded transition-colors ${
+                  instanceFilter === 'playable'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                <Film className="w-3 h-3 inline mr-1" />
+                재생가능 ({playableCount})
+              </button>
+              <button
+                onClick={() => setInstanceFilter('all')}
+                className={`flex-1 px-2 py-1.5 text-xs rounded transition-colors ${
+                  instanceFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                <Image className="w-3 h-3 inline mr-1" />
+                전체 ({totalCount})
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
@@ -344,13 +385,15 @@ export default function DicomViewerPage() {
               <div className="text-red-400 text-sm p-2">
                 데이터를 불러오는 중 오류가 발생했습니다.
               </div>
-            ) : instances.length === 0 ? (
+            ) : filteredInstances.length === 0 ? (
               <div className="text-gray-500 text-sm p-2 text-center">
-                Instance가 없습니다.
+                {instanceFilter === 'playable'
+                  ? '재생 가능한 인스턴스가 없습니다'
+                  : 'Instance가 없습니다.'}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {instances.map((instance, index) => {
+                {filteredInstances.map((instance, index) => {
                   const isMultiframe = (instance.numberOfFrames || 1) > 1
                   const hasThumbnailError = thumbnailErrors[instance.sopInstanceUid]
                   return (

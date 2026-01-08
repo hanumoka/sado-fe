@@ -11,6 +11,9 @@ import { getRenderedFrame } from '@/lib/services/dicomWebService'
 
 const SCHEME = 'wadors-rendered'
 
+// 디버그 로그 플래그 (필요시 true로 변경)
+const DEBUG_LOADER = false
+
 // 이미지별 메타데이터 캐시
 const imageMetadataCache = new Map<string, {
   rows: number
@@ -49,12 +52,12 @@ function parseImageId(imageId: string): WadoRsRenderedImageId {
  * 메모리 누수 방지를 위해 모든 리소스를 명시적으로 정리
  */
 async function blobToImageData(blob: Blob): Promise<ImageData> {
-  console.log('[wadors-rendered] blobToImageData START - blob:', { size: blob.size, type: blob.type })
+  if (DEBUG_LOADER) console.log('[wadors-rendered] blobToImageData START - blob:', { size: blob.size, type: blob.type })
 
   return new Promise((resolve, reject) => {
     const img = new Image()
     const objectUrl = URL.createObjectURL(blob)
-    console.log('[wadors-rendered] blobToImageData - objectUrl created:', objectUrl)
+    if (DEBUG_LOADER) console.log('[wadors-rendered] blobToImageData - objectUrl created:', objectUrl)
 
     const cleanup = () => {
       URL.revokeObjectURL(objectUrl)
@@ -64,7 +67,7 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
     }
 
     img.onload = () => {
-      console.log('[wadors-rendered] blobToImageData - img.onload fired, size:', img.width, 'x', img.height)
+      if (DEBUG_LOADER) console.log('[wadors-rendered] blobToImageData - img.onload fired, size:', img.width, 'x', img.height)
       try {
         const canvas = document.createElement('canvas')
         canvas.width = img.width
@@ -80,7 +83,7 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
 
         ctx.drawImage(img, 0, 0)
         const imageData = ctx.getImageData(0, 0, img.width, img.height)
-        console.log('[wadors-rendered] blobToImageData - ImageData extracted:', imageData.width, 'x', imageData.height)
+        if (DEBUG_LOADER) console.log('[wadors-rendered] blobToImageData - ImageData extracted:', imageData.width, 'x', imageData.height)
         cleanup()
         resolve(imageData)
       } catch (e) {
@@ -97,7 +100,7 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
     }
 
     img.src = objectUrl
-    console.log('[wadors-rendered] blobToImageData - img.src set, waiting for onload...')
+    if (DEBUG_LOADER) console.log('[wadors-rendered] blobToImageData - img.src set, waiting for onload...')
   })
 }
 
@@ -106,15 +109,15 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
  * WADO-RS Rendered API에서 이미지 로드
  */
 async function loadImageAsync(imageId: string): Promise<Types.IImage> {
-  console.log('[wadors-rendered] loadImageAsync called:', imageId)
+  if (DEBUG_LOADER) console.log('[wadors-rendered] loadImageAsync called:', imageId)
 
   const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber } =
     parseImageId(imageId)
 
-  console.log('[wadors-rendered] Parsed imageId:', { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber })
+  if (DEBUG_LOADER) console.log('[wadors-rendered] Parsed imageId:', { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber })
 
   // WADO-RS Rendered API 호출 (frameNumber는 0-based이므로 +1 필요)
-  console.log('[wadors-rendered] Calling getRenderedFrame for frame:', frameNumber + 1)
+  if (DEBUG_LOADER) console.log('[wadors-rendered] Calling getRenderedFrame for frame:', frameNumber + 1)
 
   let blob: Blob
   try {
@@ -124,7 +127,7 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
       sopInstanceUid,
       frameNumber + 1 // API는 1-based
     )
-    console.log('[wadors-rendered] Blob received:', { size: blob.size, type: blob.type })
+    if (DEBUG_LOADER) console.log('[wadors-rendered] Blob received:', { size: blob.size, type: blob.type })
   } catch (error) {
     console.error('[wadors-rendered] getRenderedFrame FAILED:', error)
     throw error
@@ -135,7 +138,7 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
   }
 
   const imageData = await blobToImageData(blob)
-  console.log('[wadors-rendered] ImageData created:', { width: imageData.width, height: imageData.height, dataLength: imageData.data.length })
+  if (DEBUG_LOADER) console.log('[wadors-rendered] ImageData created:', { width: imageData.width, height: imageData.height, dataLength: imageData.data.length })
 
   // 이미지 크기가 0인 경우 에러
   if (imageData.width === 0 || imageData.height === 0) {
@@ -155,11 +158,11 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
     height: imageData.height,
     // CRITICAL: RGBA 데이터 직접 반환 (Uint8Array로 변환)
     getPixelData: () => {
-      console.log('[wadors-rendered] ⚠️ getPixelData CALLED - GPU rendering path')
+      if (DEBUG_LOADER) console.log('[wadors-rendered] ⚠️ getPixelData CALLED - GPU rendering path')
       return new Uint8Array(imageData.data)
     },
     getCanvas: () => {
-      console.log('[wadors-rendered] ✅ getCanvas CALLED - CPU rendering path')
+      if (DEBUG_LOADER) console.log('[wadors-rendered] ✅ getCanvas CALLED - CPU rendering path')
       if (!cachedCanvas) {
         cachedCanvas = document.createElement('canvas')
         cachedCanvas.width = imageData.width
@@ -168,7 +171,7 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
         if (ctx) {
           ctx.putImageData(imageData, 0, 0)
         }
-        console.log('[wadors-rendered] Canvas created:', cachedCanvas.width, 'x', cachedCanvas.height)
+        if (DEBUG_LOADER) console.log('[wadors-rendered] Canvas created:', cachedCanvas.width, 'x', cachedCanvas.height)
       }
       return cachedCanvas
     },
@@ -200,7 +203,7 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
     samplesPerPixel: 4,
   })
 
-  console.log('[wadors-rendered] IImage object created:', {
+  if (DEBUG_LOADER) console.log('[wadors-rendered] IImage object created:', {
     imageId,
     rows: image.rows,
     columns: image.columns,
@@ -218,10 +221,10 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
  * Cornerstone ImageLoaderFn 형식의 로더 함수
  */
 function loadImage(imageId: string) {
-  console.log('[wadors-rendered] loadImage called:', imageId)
+  if (DEBUG_LOADER) console.log('[wadors-rendered] loadImage called:', imageId)
   const promise = loadImageAsync(imageId)
 
-  // Promise 에러 핸들링 추가
+  // Promise 에러 핸들링 추가 (에러는 항상 로깅)
   promise.catch((error) => {
     console.error('[wadors-rendered] loadImageAsync failed:', error)
   })
@@ -297,12 +300,12 @@ function wadoRsRenderedMetadataProvider(type: string, imageId: string): unknown 
  * WADO-RS Rendered 로더를 Cornerstone에 등록
  */
 export function registerWadoRsRenderedLoader(): void {
-  console.log('[Cornerstone] Registering wadors-rendered loader')
+  if (DEBUG_LOADER) console.log('[Cornerstone] Registering wadors-rendered loader')
   imageLoader.registerImageLoader(SCHEME, loadImage as unknown as Types.ImageLoaderFn)
 
   // 메타데이터 프로바이더 등록
   metaData.addProvider(wadoRsRenderedMetadataProvider, 10000) // 높은 우선순위
-  console.log('[Cornerstone] Registered wadors-rendered metadata provider')
+  if (DEBUG_LOADER) console.log('[Cornerstone] Registered wadors-rendered metadata provider')
 }
 
 /**

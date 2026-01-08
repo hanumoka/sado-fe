@@ -18,8 +18,9 @@ import {
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useCornerstoneMultiViewerStore } from '../stores'
 import { createWadoRsRenderedImageIds } from '@/lib/cornerstone/wadoRsRenderedLoader'
+import { cineAnimationManager } from '../utils/cineAnimationManager'
+import { useShallow } from 'zustand/react/shallow'
 import { CornerstoneSlotOverlay } from './CornerstoneSlotOverlay'
-import { CornerstoneSlotControls } from './CornerstoneSlotControls'
 import { TOOL_GROUP_ID } from './CornerstoneMultiViewer'
 import type { InstanceSummary } from '../types/multiSlotViewer'
 
@@ -28,36 +29,55 @@ interface CornerstoneSlotProps {
   renderingEngineId: string
 }
 
+// 디버그 로그 플래그 (필요시 true로 변경)
+const DEBUG_SLOT = false
+
 export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotProps) {
-  // Zustand store에서 slot 가져오기 (렌더 로그에서 사용하기 위해 먼저 선언)
-  const slot = useCornerstoneMultiViewerStore(
-    (state) => state.slots[slotId] || {
-      instance: null,
-      currentFrame: 0,
-      isPlaying: false,
-      isPreloading: false,
-      isPreloaded: false,
-      preloadProgress: 0,
-      loading: false,
-      error: null,
-      performanceStats: { fps: 0, avgFps: 0, frameDrops: 0, totalFramesRendered: 0, fpsHistory: [], lastFrameTime: 0 }
-    }
+  // ==================== Zustand Selector 분리 (리렌더링 최적화) ====================
+  // 기존: 전체 slot 객체 선택 → currentFrame 변경 시 전체 리렌더링
+  // 개선: 필드별 개별 선택 → 해당 필드 변경 시에만 리렌더링
+
+  // 원시 타입 필드 (개별 선택)
+  const currentFrame = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.currentFrame ?? 0
+  )
+  const isPlaying = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.isPlaying ?? false
+  )
+  const isPreloading = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.isPreloading ?? false
+  )
+  const isPreloaded = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.isPreloaded ?? false
+  )
+  const preloadProgress = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.preloadProgress ?? 0
+  )
+  const loading = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.loading ?? false
+  )
+  const error = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.error ?? null
   )
 
-  // DEBUG: 컴포넌트 렌더링 확인
-  console.log(`[CornerstoneSlot ${slotId}] RENDER - instance:`, !!slot.instance, 'loading:', slot.loading)
+  // 객체 타입 필드 (shallow 비교로 불필요한 리렌더링 방지)
+  const instance = useCornerstoneMultiViewerStore(
+    useShallow((state) => state.slots[slotId]?.instance ?? null)
+  )
+  // performanceStats 제거 - Phase 2 최적화로 재생 중 업데이트 없음
+
+  // DEBUG: 컴포넌트 렌더링 확인 (조건부)
+  if (DEBUG_SLOT) {
+    console.log(`[CornerstoneSlot ${slotId}] RENDER - instance:`, !!instance, 'loading:', loading)
+  }
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<Types.IStackViewport | null>(null)
-  const animationRef = useRef<number | null>(null)
-  const lastTimeRef = useRef<number | null>(null)
   const [isStackLoaded, setIsStackLoaded] = useState(false)
   const [isViewportReady, setIsViewportReady] = useState(false)
 
   // 전역 상태 및 액션 (slot은 위에서 이미 선언됨)
   const globalFps = useCornerstoneMultiViewerStore((state) => state.globalFps)
-  const nextFrameSlot = useCornerstoneMultiViewerStore((state) => state.nextFrameSlot)
-  const updateSlotPerformance = useCornerstoneMultiViewerStore((state) => state.updateSlotPerformance)
   const assignInstanceToSlot = useCornerstoneMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useCornerstoneMultiViewerStore((state) => state.preloadSlotFrames)
   const viewportId = `cs-slot-${slotId}`
@@ -90,15 +110,17 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
 
   useEffect(() => {
     // DEBUG: 이 로그가 출력되지 않으면 useEffect 자체가 실행 안됨
-    console.log(`[CornerstoneSlot ${slotId}] Viewport init effect CALLED - containerRef:`, !!containerRef.current, 'instance:', !!slot.instance, 'loading:', slot.loading)
+    if (DEBUG_SLOT) {
+      console.log(`[CornerstoneSlot ${slotId}] Viewport init effect CALLED - containerRef:`, !!containerRef.current, 'instance:', !!instance, 'loading:', loading)
+    }
 
-    // containerRef만 체크 - slot.instance 체크 제거!
+    // containerRef만 체크 - instance 체크 제거!
     if (!containerRef.current) {
-      console.log(`[CornerstoneSlot ${slotId}] Early return - no containerRef`)
+      if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Early return - no containerRef`)
       return
     }
 
-    console.log(`[CornerstoneSlot ${slotId}] Viewport init effect triggered`)
+    if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Viewport init effect triggered`)
 
     const renderingEngine = csGetRenderingEngine(renderingEngineId)
     if (!renderingEngine) {
@@ -125,20 +147,20 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
 
       viewportRef.current = renderingEngine.getViewport(viewportId) as Types.IStackViewport
       setIsViewportReady(true)
-      console.log(`[CornerstoneSlot ${slotId}] Viewport created, isViewportReady: true`)
+      if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Viewport created, isViewportReady: true`)
 
       // ToolGroup에 viewport 연결
       const toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(TOOL_GROUP_ID)
       if (toolGroup) {
         try {
           toolGroup.addViewport(viewportId, renderingEngineId)
-          console.log(`[CornerstoneSlot ${slotId}] Viewport added to ToolGroup`)
+          if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Viewport added to ToolGroup`)
         } catch (e) {
           // 이미 추가된 경우 무시
         }
       }
     } catch (error) {
-      console.error(`[CornerstoneSlot ${slotId}] Viewport creation failed:`, error)
+      if (DEBUG_SLOT) console.error(`[CornerstoneSlot ${slotId}] Viewport creation failed:`, error)
     }
 
     return () => {
@@ -156,21 +178,23 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
       if (re) {
         try {
           re.disableElement(viewportId)
-          console.log(`[CornerstoneSlot ${slotId}] Viewport disabled (cleanup)`)
+          if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Viewport disabled (cleanup)`)
         } catch (e) {
           // 이미 제거된 경우 무시
         }
       }
       viewportRef.current = null
     }
-  }, [!!slot.instance, slot.loading, slotId, viewportId, renderingEngineId])  // slot.loading 추가: loading 완료 후 effect 재실행
+  }, [!!instance, loading, slotId, viewportId, renderingEngineId])  // loading 추가: loading 완료 후 effect 재실행
 
   // ==================== Stack 설정 ====================
 
   useEffect(() => {
-    console.log(`[CornerstoneSlot ${slotId}] Stack effect - isViewportReady:`, isViewportReady, 'viewportRef:', !!viewportRef.current, 'instance:', !!slot.instance)
+    if (DEBUG_SLOT) {
+      console.log(`[CornerstoneSlot ${slotId}] Stack effect - isViewportReady:`, isViewportReady, 'viewportRef:', !!viewportRef.current, 'instance:', !!instance)
+    }
 
-    if (!viewportRef.current || !slot.instance || !isViewportReady) {
+    if (!viewportRef.current || !instance || !isViewportReady) {
       setIsStackLoaded(false)
       return
     }
@@ -178,13 +202,14 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     const loadStack = async () => {
       setIsStackLoaded(false)
 
-      const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, numberOfFrames } =
-        slot.instance!
+      const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, numberOfFrames } = instance
 
-      console.log(`[CornerstoneSlot ${slotId}] Loading stack:`, {
-        sopInstanceUid: sopInstanceUid.slice(0, 20) + '...',
-        numberOfFrames,
-      })
+      if (DEBUG_SLOT) {
+        console.log(`[CornerstoneSlot ${slotId}] Loading stack:`, {
+          sopInstanceUid: sopInstanceUid.slice(0, 20) + '...',
+          numberOfFrames,
+        })
+      }
 
       // WADO-RS Rendered imageIds 생성
       const imageIds = createWadoRsRenderedImageIds(
@@ -195,19 +220,19 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
       )
 
       try {
-        console.log(`[CornerstoneSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
+        if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
         await viewportRef.current!.setStack(imageIds)
-        console.log(`[CornerstoneSlot ${slotId}] setStack completed`)
+        if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] setStack completed`)
 
         // 첫 프레임 로드 - loadImage 사용 (참조 프로젝트와 동일)
         if (imageIds.length > 0) {
-          console.log(`[CornerstoneSlot ${slotId}] Calling loadImage for first frame...`)
-          const loadResult = await imageLoader.loadImage(imageIds[0])
-          console.log(`[CornerstoneSlot ${slotId}] loadImage completed:`, loadResult)
+          if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Calling loadImage for first frame...`)
+          await imageLoader.loadImage(imageIds[0])
+          if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] loadImage completed`)
         }
 
         // 인덱스 설정 및 렌더링
-        console.log(`[CornerstoneSlot ${slotId}] Setting imageIdIndex to 0...`)
+        if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Setting imageIdIndex to 0...`)
         viewportRef.current!.setImageIdIndex(0)
 
         // CRITICAL: viewport resize 및 카메라 리셋 (컬러 이미지 렌더링에 필요할 수 있음)
@@ -219,19 +244,24 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
         viewportRef.current!.render()
 
         // DEBUG: 렌더링 상태 확인
-        const canvas = viewportRef.current!.getCanvas()
-        const element = containerRef.current!
-        console.log(`[CornerstoneSlot ${slotId}] DEBUG after render:`, {
-          canvasWidth: canvas.width,
-          canvasHeight: canvas.height,
-          elementClientWidth: element.clientWidth,
-          elementClientHeight: element.clientHeight,
-          currentImageIdIndex: viewportRef.current!.getCurrentImageIdIndex(),
-          imageIdsLength: viewportRef.current!.getImageIds().length,
-        })
+        if (DEBUG_SLOT) {
+          const canvas = viewportRef.current!.getCanvas()
+          const element = containerRef.current!
+          console.log(`[CornerstoneSlot ${slotId}] DEBUG after render:`, {
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            elementClientWidth: element.clientWidth,
+            elementClientHeight: element.clientHeight,
+            currentImageIdIndex: viewportRef.current!.getCurrentImageIdIndex(),
+            imageIdsLength: viewportRef.current!.getImageIds().length,
+          })
+        }
 
         setIsStackLoaded(true)
-        console.log(`[CornerstoneSlot ${slotId}] Stack loaded with ${imageIds.length} frames`)
+        if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Stack loaded with ${imageIds.length} frames`)
+
+        // Phase 2: Viewport를 CineAnimationManager에 등록
+        cineAnimationManager.registerViewport(slotId, viewportRef.current!, numberOfFrames)
       } catch (error) {
         console.error(`[CornerstoneSlot ${slotId}] Stack load failed:`, error)
         setIsStackLoaded(false)
@@ -239,87 +269,76 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     }
 
     loadStack()
-  }, [slot.instance?.sopInstanceUid, slot.loading, slotId, isViewportReady])  // isViewportReady 추가: viewport 생성 후 stack 로드
+
+    // Cleanup: Viewport 등록 해제
+    return () => {
+      cineAnimationManager.unregisterViewport(slotId)
+    }
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId])  // isViewportReady 추가: viewport 생성 후 stack 로드
 
   // ==================== 자동 프리로드 ====================
 
   useEffect(() => {
-    if (!slot.instance || slot.isPreloaded || slot.isPreloading) return
-    if (slot.instance.numberOfFrames <= 1) return
+    if (!instance || isPreloaded || isPreloading) return
+    if (instance.numberOfFrames <= 1) return
 
     // 인스턴스 할당 후 자동 프리로드
     preloadSlotFrames(slotId)
-  }, [slot.instance?.sopInstanceUid, slot.isPreloaded, slot.isPreloading, slotId, preloadSlotFrames])
+  }, [instance?.sopInstanceUid, isPreloaded, isPreloading, slotId, preloadSlotFrames])
 
   // ==================== 프레임 변경 시 뷰포트 업데이트 ====================
+  // Phase 2: 재생 중에는 CineAnimationManager가 직접 viewport를 업데이트하므로 스킵
 
   useEffect(() => {
-    if (!viewportRef.current || !slot.instance || !isStackLoaded) return
+    if (!viewportRef.current || !instance || !isStackLoaded) return
+
+    // Phase 2: 재생 중에는 CineAnimationManager가 직접 처리하므로 React에서 업데이트하지 않음
+    if (isPlaying) return
 
     try {
-      viewportRef.current.setImageIdIndex(slot.currentFrame)
+      viewportRef.current.setImageIdIndex(currentFrame)
       viewportRef.current.render()
     } catch (error) {
-      console.warn(`[CornerstoneSlot ${slotId}] Frame ${slot.currentFrame} not ready yet`)
+      if (DEBUG_SLOT) console.warn(`[CornerstoneSlot ${slotId}] Frame ${currentFrame} not ready yet`)
     }
-  }, [slot.currentFrame, slot.instance, isStackLoaded, slotId])
+  }, [currentFrame, instance, isStackLoaded, isPlaying, slotId])
 
-  // ==================== Cine 재생 루프 ====================
+  // ==================== Cine 재생 루프 (CineAnimationManager 연동) ====================
+  // 기존: 각 슬롯이 독립적인 requestAnimationFrame 루프 실행 → 타이밍 드리프트 발생
+  // 개선: 중앙 집중식 CineAnimationManager로 모든 슬롯 동시 업데이트
+  // Phase 2: CineAnimationManager가 직접 viewport를 조작 (React 상태 업데이트 없음)
 
   useEffect(() => {
-    // 재생 조건 미충족 시 cleanup만 수행
-    if (!slot.isPlaying || !slot.instance || slot.instance.numberOfFrames <= 1) {
-      return
+    // 재생 조건 체크
+    if (isPlaying && instance && instance.numberOfFrames > 1) {
+      // Phase 2: 재생 시작 시 현재 프레임 인덱스를 CineAnimationManager에 동기화
+      cineAnimationManager.setCurrentIndex(slotId, currentFrame)
+      // CineAnimationManager에 등록 → 중앙 rAF 루프에서 직접 viewport 업데이트
+      cineAnimationManager.registerSlot(slotId)
+    } else {
+      // CineAnimationManager에서 등록 해제 (내부에서 Zustand에 프레임 동기화)
+      cineAnimationManager.unregisterSlot(slotId)
     }
 
-    // 재생 시작 시 lastTime 초기화
-    lastTimeRef.current = null
-    const frameTime = 1000 / globalFps
-
-    const animate = (currentTime: number) => {
-      // 첫 프레임은 시간만 기록
-      if (lastTimeRef.current === null) {
-        lastTimeRef.current = currentTime
-        animationRef.current = requestAnimationFrame(animate)
-        return
-      }
-
-      const elapsed = currentTime - lastTimeRef.current
-
-      if (elapsed >= frameTime) {
-        lastTimeRef.current = currentTime
-
-        // 다음 프레임으로 이동
-        nextFrameSlot(slotId)
-
-        // 성능 통계 업데이트
-        const actualFps = 1000 / elapsed
-        updateSlotPerformance(slotId, actualFps, currentTime)
-      }
-
-      animationRef.current = requestAnimationFrame(animate)
-    }
-
-    animationRef.current = requestAnimationFrame(animate)
-
-    // Cleanup: 재생 중지 시 애니메이션 취소
+    // Cleanup: 컴포넌트 언마운트 시 등록 해제
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-        animationRef.current = null
-      }
-      lastTimeRef.current = null
+      cineAnimationManager.unregisterSlot(slotId)
     }
-  }, [slot.isPlaying, slot.instance, globalFps, slotId, nextFrameSlot, updateSlotPerformance])
+  }, [isPlaying, instance, slotId, currentFrame])
+
+  // globalFps 변경 시 CineAnimationManager에 반영
+  useEffect(() => {
+    cineAnimationManager.setFrameTime(globalFps)
+  }, [globalFps])
 
   // ==================== 렌더링 ====================
 
-  const totalFrames = slot.instance?.numberOfFrames || 0
+  const totalFrames = instance?.numberOfFrames || 0
 
   // 빈 슬롯 - viewport 생성하지 않음 (early return)
   // CRITICAL: key="empty"로 React가 viewport와 다른 컴포넌트로 인식하게 함
-  if (!slot.instance) {
-    console.log(`[CornerstoneSlot ${slotId}] Returning EMPTY slot JSX`)
+  if (!instance) {
+    if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Returning EMPTY slot JSX`)
     return (
       <div
         key="empty"
@@ -349,8 +368,8 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   }
 
   // 로딩 상태
-  if (slot.loading) {
-    console.log(`[CornerstoneSlot ${slotId}] Returning LOADING JSX`)
+  if (loading) {
+    if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Returning LOADING JSX`)
     return (
       <div className="relative bg-gray-900 rounded-lg flex items-center justify-center min-h-[200px] w-full h-full">
         <div className="text-center text-gray-400">
@@ -362,7 +381,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   }
 
   // 에러 상태
-  if (slot.error) {
+  if (error) {
     return (
       <div className="relative bg-red-900/30 rounded-lg border border-red-600 flex items-center justify-center min-h-[200px] w-full h-full">
         <div className="text-center text-red-400 p-4">
@@ -379,7 +398,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
-          <p className="text-sm">{slot.error}</p>
+          <p className="text-sm">{error}</p>
         </div>
       </div>
     )
@@ -388,7 +407,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   // 정상 상태 - viewport 렌더링
   // CRITICAL: key="viewport"로 React가 empty와 다른 컴포넌트로 인식하게 함
   // → instance 할당 시 remount되어 useEffect 재실행
-  console.log(`[CornerstoneSlot ${slotId}] Returning VIEWPORT JSX`)
+  if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Returning VIEWPORT JSX`)
   return (
     <div
       key="viewport"
@@ -404,29 +423,16 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
           onContextMenu={(e) => e.preventDefault()}
         />
 
-        {/* 성능 오버레이 */}
+        {/* 슬롯 오버레이 */}
         <CornerstoneSlotOverlay
           slotId={slotId}
-          currentFrame={slot.currentFrame}
           totalFrames={totalFrames}
-          fps={slot.performanceStats.fps}
-          avgFps={slot.performanceStats.avgFps}
-          frameDrops={slot.performanceStats.frameDrops}
-          preloadProgress={slot.preloadProgress}
-          isPreloading={slot.isPreloading}
-          isPreloaded={slot.isPreloaded}
-          isPlaying={slot.isPlaying}
+          preloadProgress={preloadProgress}
+          isPreloading={isPreloading}
+          isPreloaded={isPreloaded}
+          isPlaying={isPlaying}
         />
       </div>
-
-      {/* 슬롯 컨트롤 */}
-      <CornerstoneSlotControls
-        slotId={slotId}
-        isPlaying={slot.isPlaying}
-        currentFrame={slot.currentFrame}
-        totalFrames={totalFrames}
-        isPreloaded={slot.isPreloaded}
-      />
     </div>
   )
 }

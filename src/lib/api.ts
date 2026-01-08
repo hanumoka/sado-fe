@@ -1,5 +1,6 @@
 import { ApiError, ErrorCodes } from './apiErrors'
 import { apiConfig } from './config'
+import { getTenantId } from './tenantStore'
 
 /**
  * api.ts
@@ -10,6 +11,7 @@ import { apiConfig } from './config'
  * 1. 구조화된 에러 처리 (ApiError)
  * 2. AbortController 기반 타임아웃 처리
  * 3. GET, POST, PUT, DELETE, uploadFile 메서드 제공
+ * 4. 멀티테넌시 지원 (X-Tenant-Id 헤더 자동 추가)
  *
  * Note: 인증/인가 기능은 POC 단계에서 제외됨
  */
@@ -119,12 +121,20 @@ async function fetchWithErrorHandling(
 
 /**
  * 공통 헤더 생성
+ *
+ * 멀티테넌시: tenantStore에 tenantId가 설정되어 있으면 X-Tenant-Id 헤더 추가
  */
 function getHeaders(includeContentType = true): HeadersInit {
-  const headers: HeadersInit = {}
+  const headers: Record<string, string> = {}
 
   if (includeContentType) {
     headers['Content-Type'] = 'application/json'
+  }
+
+  // 멀티테넌시: X-Tenant-Id 헤더 추가
+  const tenantId = getTenantId()
+  if (tenantId !== undefined && tenantId !== null) {
+    headers['X-Tenant-Id'] = String(tenantId)
   }
 
   return headers

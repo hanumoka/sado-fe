@@ -91,6 +91,7 @@ function adaptInstanceResponse(response: InstanceResponse): Instance {
     storageTier: response.storageTier ?? undefined,
     createdAt: response.createdAt ?? undefined,
     updatedAt: response.updatedAt ?? undefined,
+    tenantId: response.tenantId ?? undefined,
   }
 }
 

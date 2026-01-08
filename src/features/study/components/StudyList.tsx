@@ -25,12 +25,15 @@ interface StudyListProps {
 type SortKey =
   | 'id'
   | 'uuid'
+  | 'studyInstanceUid'
+  | 'patientId'
   | 'patientName'
   | 'studyDate'
   | 'modality'
   | 'studyDescription'
   | 'seriesCount'
   | 'instancesCount'
+  | 'tenantId'
 type SortOrder = 'asc' | 'desc'
 
 interface SortConfig {
@@ -39,14 +42,17 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
-  { key: 'id', label: 'ID (PK)', className: 'w-20' },
-  { key: 'uuid', label: 'UUID', className: 'w-80' },
+  { key: 'tenantId', label: 'Tenant', className: 'w-16' },
+  { key: 'id', label: 'ID', className: 'w-14' },
+  { key: 'patientId', label: 'Patient ID', className: 'w-20' },
+  { key: 'uuid', label: 'UUID', className: 'w-28' },
+  { key: 'studyInstanceUid', label: 'Study UID', className: 'w-36' },
   { key: 'patientName', label: '환자 이름' },
   { key: 'studyDate', label: '검사 날짜', className: 'w-28' },
   { key: 'modality', label: 'Modality', className: 'w-24' },
   { key: 'studyDescription', label: 'Study 설명' },
-  { key: 'seriesCount', label: 'Series', className: 'w-20' },
-  { key: 'instancesCount', label: 'Images', className: 'w-20' },
+  { key: 'seriesCount', label: 'Series', className: 'w-16' },
+  { key: 'instancesCount', label: 'Images', className: 'w-16' },
 ]
 
 export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
@@ -83,9 +89,14 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
 
       switch (key) {
         case 'id':
+        case 'patientId':
           comparison = a[key].localeCompare(b[key])
           break
+        case 'tenantId':
+          comparison = (a[key] ?? 0) - (b[key] ?? 0)
+          break
         case 'uuid':
+        case 'studyInstanceUid':
           comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
           break
         case 'patientName':
@@ -125,16 +136,16 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="min-w-full divide-y divide-gray-200 table-fixed">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
                 #
               </th>
               {COLUMNS.map((column) => (
                 <th
                   key={column.key}
-                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${column.className || ''}`}
+                  className={`px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${column.className || ''}`}
                   onClick={() => handleSort(column.key)}
                 >
                   <div className="flex items-center gap-1">
@@ -153,22 +164,35 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
                 onClick={() => handleRowClick(study.id)}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-400">
                   {(currentPage - 1) * pageSize + index + 1}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                    {study.tenantId ?? '-'}
+                  </span>
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                   {study.id}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                    {study.patientId}
+                  </span>
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
                   {study.uuid ?? '-'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
+                  {study.studyInstanceUid}
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-gray-400" />
                     {study.patientName}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                   <div>
                     <div>{study.studyDate}</div>
                     <div className="text-xs text-gray-500">
@@ -176,20 +200,20 @@ export default function StudyList({ studies, pageSize = 10 }: StudyListProps) {
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <td className="px-3 py-3 whitespace-nowrap text-sm">
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getModalityBadgeColor(study.modality)}`}
                   >
                     {study.modality}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
+                <td className="px-3 py-3 text-sm text-gray-500">
                   {study.studyDescription}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500 text-center">
                   {study.seriesCount}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500 text-center">
                   {study.instancesCount}
                 </td>
               </tr>

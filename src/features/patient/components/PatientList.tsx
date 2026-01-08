@@ -48,6 +48,7 @@ type SortKey =
   | 'issuer'
   | 'studiesCount'
   | 'lastStudyDate'
+  | 'tenantId'
 type SortOrder = 'asc' | 'desc'
 
 interface SortConfig {
@@ -56,6 +57,7 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'tenantId', label: 'Tenant', className: 'w-20' },
   { key: 'id', label: 'ID (PK)', className: 'w-20' },
   { key: 'uuid', label: 'UUID', className: 'w-80' },
   { key: 'name', label: '이름' },
@@ -104,6 +106,7 @@ export default function PatientList({
 
       switch (key) {
         case 'id':
+        case 'tenantId':
           comparison = Number(a[key]) - Number(b[key])
           break
         case 'uuid':
@@ -208,6 +211,11 @@ export default function PatientList({
                     <User className="h-4 w-4 text-gray-400" />
                     {patient.dicomPatientId}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                    {patient.tenantId ?? '-'}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {patient.id}

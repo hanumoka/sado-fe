@@ -77,6 +77,7 @@ function adaptPatientResponse(response: PatientResponse): Patient {
     issuer: response.issuerOfPatientId || '',
     studiesCount: response.studiesCount ?? 0,
     lastStudyDate: response.lastStudyDate ?? undefined,
+    tenantId: response.tenantId ?? undefined,
   }
 }
 

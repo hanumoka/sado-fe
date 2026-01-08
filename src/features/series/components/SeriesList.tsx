@@ -25,6 +25,8 @@ interface SeriesListProps {
 type SortKey =
   | 'id'
   | 'uuid'
+  | 'studyId'
+  | 'seriesInstanceUid'
   | 'patientName'
   | 'studyDescription'
   | 'modality'
@@ -32,6 +34,7 @@ type SortKey =
   | 'bodyPartExamined'
   | 'seriesNumber'
   | 'instancesCount'
+  | 'tenantId'
 type SortOrder = 'asc' | 'desc'
 
 interface SortConfig {
@@ -40,8 +43,11 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'tenantId', label: 'Tenant', className: 'w-16' },
   { key: 'id', label: 'ID (PK)', className: 'w-20' },
-  { key: 'uuid', label: 'UUID', className: 'w-80' },
+  { key: 'studyId', label: 'Study ID', className: 'w-20' },
+  { key: 'uuid', label: 'UUID', className: 'w-28' },
+  { key: 'seriesInstanceUid', label: 'Series UID', className: 'w-36' },
   { key: 'patientName', label: '환자 이름' },
   { key: 'studyDescription', label: 'Study 설명' },
   { key: 'modality', label: 'Modality', className: 'w-24' },
@@ -90,7 +96,14 @@ export default function SeriesList({
         case 'id':
           comparison = Number(a[key]) - Number(b[key])
           break
+        case 'studyId':
+          comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
+          break
+        case 'tenantId':
+          comparison = (a[key] ?? 0) - (b[key] ?? 0)
+          break
         case 'uuid':
+        case 'seriesInstanceUid':
           comparison = (a[key] ?? '').localeCompare(b[key] ?? '')
           break
         case 'patientName':
@@ -160,11 +173,24 @@ export default function SeriesList({
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                   {(currentPage - 1) * pageSize + index + 1}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                    {series.tenantId ?? '-'}
+                  </span>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {series.id}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                    {series.studyId}
+                  </span>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
                   {series.uuid ?? '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
+                  {series.seriesInstanceUid}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   <div className="flex items-center gap-2">

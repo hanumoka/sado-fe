@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { v4 as uuidv4 } from 'uuid'
 import { uploadConfig } from '@/lib/config'
@@ -16,13 +16,28 @@ import type { UploadFile, UploadResponse, UploadSummary } from '../types/upload'
  * - 각 파일의 진행 상태 추적
  * - 업로드 결과 요약
  * - 업로드 완료 후 관련 캐시 무효화 (patients, studies)
+ * - 멀티테넌시 지원 (X-Tenant-Id 헤더)
  */
+
+/**
+ * 업로드 옵션
+ */
+export interface UploadOptions {
+  /**
+   * 테넌트 ID (멀티테넌시)
+   * 지정하지 않으면 서버 기본값(1) 사용
+   */
+  tenantId?: number | string
+}
 
 export function useUploadDicom() {
   const queryClient = useQueryClient()
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [summary, setSummary] = useState<UploadSummary | null>(null)
+
+  // 현재 업로드에 사용할 tenantId (ref로 저장하여 콜백에서 참조)
+  const currentTenantIdRef = useRef<number | string | undefined>(undefined)
 
   /**
    * 파일 상태 업데이트
@@ -60,8 +75,11 @@ export function useUploadDicom() {
    */
   const realUpload = useCallback(
     async (fileId: string, file: File): Promise<UploadResponse> => {
-      const result = await storeInstance(file, (progress) => {
-        updateFileProgress(fileId, progress)
+      const result = await storeInstance(file, {
+        tenantId: currentTenantIdRef.current,
+        onProgress: (progress) => {
+          updateFileProgress(fileId, progress)
+        },
       })
 
       if (result.success) {
@@ -137,9 +155,14 @@ export function useUploadDicom() {
 
   /**
    * 파일 업로드 시작
+   *
+   * @param files 업로드할 파일 목록
+   * @param options 업로드 옵션 (tenantId 등)
    */
   const uploadDicomFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], options?: UploadOptions) => {
+      // tenantId를 ref에 저장 (콜백에서 참조)
+      currentTenantIdRef.current = options?.tenantId
       // ========== 업로드 정책 검증 ==========
 
       // 1. 파일 개수 검증 (최대 100개)

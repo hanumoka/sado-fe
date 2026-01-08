@@ -26,6 +26,7 @@ export interface Patient {
   issuer: string // 발급 기관
   studiesCount?: number // Study 개수
   lastStudyDate?: string // 최근 Study 날짜 (YYYY-MM-DD)
+  tenantId?: number // 테넌트 ID (멀티테넌시)
 }
 
 /**
@@ -43,6 +44,7 @@ export interface Study {
   studyDescription: string // Study 설명
   seriesCount: number // Series 개수
   instancesCount: number // Instance 개수
+  tenantId?: number // 테넌트 ID (멀티테넌시)
 }
 
 /**
@@ -62,6 +64,7 @@ export interface Series {
   manufacturer?: string // 장비 제조사
   manufacturerModelName?: string // 장비 모델명
   instancesCount: number // Instance 개수
+  tenantId?: number // 테넌트 ID (멀티테넌시)
 }
 
 /**
@@ -87,6 +90,7 @@ export interface Instance {
   storageTier?: string // 스토리지 티어 (HOT, WARM, COLD)
   createdAt?: string // 생성일시
   updatedAt?: string // 수정일시
+  tenantId?: number // 테넌트 ID (멀티테넌시)
 }
 
 /**

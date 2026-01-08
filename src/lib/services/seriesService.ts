@@ -52,6 +52,7 @@ function adaptSeriesResponse(response: SeriesResponse): Series {
     manufacturer: response.manufacturer ?? undefined,
     manufacturerModelName: response.manufacturerModelName ?? undefined,
     instancesCount: response.numberOfInstances ?? 0,
+    tenantId: response.tenantId ?? undefined,
   }
 }
 

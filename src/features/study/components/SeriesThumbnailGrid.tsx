@@ -24,10 +24,12 @@ interface SeriesThumbnailGridProps {
 /**
  * Series 카드 컴포넌트 (썸네일 포함)
  */
+type ViewerType = 'wado-rs-rendered' | 'wado-rs' | 'wado-uri'
+
 interface SeriesCardProps {
   series: Series
   studyInstanceUid?: string
-  onView: (seriesId: string) => void
+  onView: (seriesId: string, viewerType: ViewerType) => void
 }
 
 /**
@@ -45,17 +47,8 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
   return (
     <div
       key={series.id}
-      role="button"
-      tabIndex={0}
       aria-label={`${series.modality} Series ${series.seriesNumber}: ${series.seriesDescription || 'No description'}, ${series.instancesCount}개 이미지`}
-      className={`${colors.bg} rounded-lg overflow-hidden shadow hover:shadow-lg transition-shadow cursor-pointer group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
-      onClick={() => onView(series.id)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onView(series.id)
-        }
-      }}
+      className={`${colors.bg} rounded-lg overflow-hidden shadow hover:shadow-lg transition-shadow group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
     >
       {/* DICOM 썸네일 */}
       <div className={`relative h-40 ${thumbnailUrl ? 'bg-black' : `bg-gradient-to-br ${colors.gradient}`}`}>
@@ -99,19 +92,45 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
         </div>
 
         {/* Hover 오버레이 */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation()
-              onView(series.id)
-            }}
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            뷰어 열기
-          </Button>
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs"
+              onClick={(e) => {
+                e.stopPropagation()
+                onView(series.id, 'wado-rs-rendered')
+              }}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              RS-Rendered
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs"
+              onClick={(e) => {
+                e.stopPropagation()
+                onView(series.id, 'wado-rs')
+              }}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              WADO-RS
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs"
+              onClick={(e) => {
+                e.stopPropagation()
+                onView(series.id, 'wado-uri')
+              }}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              WADO-URI
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -137,14 +156,13 @@ export default function SeriesThumbnailGrid({
 }: SeriesThumbnailGridProps) {
   const navigate = useNavigate()
 
-  const handleViewSeries = (seriesId: string) => {
+  const handleViewSeries = (seriesId: string, viewerType: ViewerType) => {
     // seriesId로 해당 Series 찾기
     const series = seriesList.find((s) => s.id === seriesId)
     if (!series || !studyInstanceUid) return
 
     // studyInstanceUid와 seriesInstanceUid를 URL 파라미터로 전달
-    // POC: WADO-RS Rendered 뷰어
-    navigate(`/viewer/wado-rs-rendered/${studyInstanceUid}/${series.seriesInstanceUid}`)
+    navigate(`/viewer/${viewerType}/${studyInstanceUid}/${series.seriesInstanceUid}`)
   }
 
   if (seriesList.length === 0) {

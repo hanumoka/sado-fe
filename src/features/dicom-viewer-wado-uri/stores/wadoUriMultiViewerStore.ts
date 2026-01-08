@@ -17,8 +17,8 @@ import type {
 } from '../types/wadoUriTypes'
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
-import { imageLoader } from '@cornerstonejs/core'
 import { createWadoUriImageId } from '../utils/wadoUriImageIdHelper'
+import { loadWadoUriImage } from '../utils/wadoUriImageLoader'
 
 // ==================== 초기 상태 생성 ====================
 
@@ -583,8 +583,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
           )
 
           batch.push(
-            imageLoader
-              .loadImage(imageId)
+            loadWadoUriImage(imageId)
               .then(() => {
                 loadedCount++
                 const progress = Math.round((loadedCount / numberOfFrames) * 100)

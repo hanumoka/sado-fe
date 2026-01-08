@@ -6,3 +6,10 @@ export {
   getFrameNumberFromImageId,
   getSopInstanceUidFromImageId,
 } from './wadoUriImageIdHelper'
+export {
+  loadWadoUriImage,
+  getWadoUriLoaderStats,
+  getPendingLoadCount,
+  resetWadoUriLoaderStats,
+  clearPendingLoads,
+} from './wadoUriImageLoader'

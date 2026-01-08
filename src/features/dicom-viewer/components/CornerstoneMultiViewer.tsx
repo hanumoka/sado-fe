@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { RenderingEngine } from '@cornerstonejs/core'
+import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useCornerstoneMultiViewerStore } from '../stores'
 import { initCornerstone } from '@/lib/cornerstone/initCornerstone'
 import type { GridLayout } from '../types/multiSlotViewer'
@@ -15,6 +16,7 @@ import { CornerstoneSlot } from './CornerstoneSlot'
 import { CornerstoneGlobalControls } from './CornerstoneGlobalControls'
 
 const RENDERING_ENGINE_ID = 'cornerstoneMultiViewerEngine'
+const TOOL_GROUP_ID = 'cornerstoneMultiViewerToolGroup'
 
 interface CornerstoneMultiViewerProps {
   className?: string
@@ -70,6 +72,36 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
         if (mounted && !renderingEngineRef.current) {
           renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
           console.log('[CornerstoneMultiViewer] RenderingEngine created')
+
+          // ToolGroup 생성 및 도구 활성화
+          let toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(TOOL_GROUP_ID)
+          if (!toolGroup) {
+            toolGroup = cornerstoneTools.ToolGroupManager.createToolGroup(TOOL_GROUP_ID)
+            console.log('[CornerstoneMultiViewer] ToolGroup created')
+          }
+
+          if (toolGroup) {
+            // ToolGroup에 도구 추가
+            try {
+              toolGroup.addTool(cornerstoneTools.WindowLevelTool.toolName)
+              toolGroup.addTool(cornerstoneTools.PanTool.toolName)
+              toolGroup.addTool(cornerstoneTools.ZoomTool.toolName)
+            } catch (e) {
+              // 이미 추가된 경우 무시
+            }
+
+            // 마우스 바인딩과 함께 도구 활성화
+            toolGroup.setToolActive(cornerstoneTools.WindowLevelTool.toolName, {
+              bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Primary }]
+            })
+            toolGroup.setToolActive(cornerstoneTools.PanTool.toolName, {
+              bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Auxiliary }]
+            })
+            toolGroup.setToolActive(cornerstoneTools.ZoomTool.toolName, {
+              bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Secondary }]
+            })
+            console.log('[CornerstoneMultiViewer] Tools activated: WindowLevel(left), Pan(middle), Zoom(right)')
+          }
         }
       } catch (error) {
         console.error('[CornerstoneMultiViewer] Initialization failed:', error)
@@ -80,6 +112,13 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
 
     return () => {
       mounted = false
+      // ToolGroup 제거
+      try {
+        cornerstoneTools.ToolGroupManager.destroyToolGroup(TOOL_GROUP_ID)
+        console.log('[CornerstoneMultiViewer] ToolGroup destroyed')
+      } catch (e) {
+        // 이미 제거된 경우 무시
+      }
       if (renderingEngineRef.current) {
         renderingEngineRef.current.destroy()
         renderingEngineRef.current = null
@@ -107,4 +146,4 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
   )
 }
 
-export { RENDERING_ENGINE_ID }
+export { RENDERING_ENGINE_ID, TOOL_GROUP_ID }

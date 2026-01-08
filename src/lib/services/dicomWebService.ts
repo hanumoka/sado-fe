@@ -443,18 +443,32 @@ export async function getRenderedFrame(
   frameNumber: number
 ): Promise<Blob> {
   const url = getRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+  console.log('[dicomWebService] getRenderedFrame URL:', url)
 
-  const response = await fetch(url, {
-    headers: {
-      'Accept': 'image/jpeg, image/png',
-    },
-  })
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'image/jpeg, image/png',
+      },
+    })
 
-  if (!response.ok) {
-    throw new Error(`WADO-RS getRenderedFrame failed: ${response.status}`)
+    console.log('[dicomWebService] getRenderedFrame response:', {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type'),
+    })
+
+    if (!response.ok) {
+      throw new Error(`WADO-RS getRenderedFrame failed: ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    console.log('[dicomWebService] getRenderedFrame blob:', { size: blob.size, type: blob.type })
+    return blob
+  } catch (error) {
+    console.error('[dicomWebService] getRenderedFrame error:', error)
+    throw error
   }
-
-  return response.blob()
 }
 
 /**

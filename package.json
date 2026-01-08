@@ -12,9 +12,9 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\""
   },
   "dependencies": {
-    "@cornerstonejs/core": "^4.15.1",
-    "@cornerstonejs/dicom-image-loader": "^4.15.1",
-    "@cornerstonejs/tools": "^4.15.1",
+    "@cornerstonejs/core": "4.12.6",
+    "@cornerstonejs/dicom-image-loader": "4.12.6",
+    "@cornerstonejs/tools": "4.12.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@tanstack/react-query": "^5.90.16",
     "class-variance-authority": "^0.7.1",

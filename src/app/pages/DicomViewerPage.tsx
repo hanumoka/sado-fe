@@ -11,12 +11,12 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Loader2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, Loader2, AlertCircle } from 'lucide-react'
 import { RenderingEngine } from '@cornerstonejs/core'
 import { useInstances } from '@/features/dicom-viewer/hooks/useInstances'
 import { useCornerstoneMultiViewerStore } from '@/features/dicom-viewer/stores'
 import { CornerstoneSlot } from '@/features/dicom-viewer/components'
-import { initCornerstone } from '@/lib/cornerstone/initCornerstone'
+import { initCornerstone, isInitialized as isCornerstoneInitialized } from '@/lib/cornerstone/initCornerstone'
 import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'
 import type { InstanceSummary } from '@/features/dicom-viewer/types/multiSlotViewer'
 
@@ -37,7 +37,7 @@ export default function DicomViewerPage() {
     seriesInstanceUid: string
   }>()
   const navigate = useNavigate()
-  const [layout, setLayout] = useState<GridLayout>('2x2')
+  const [layout, setLayout] = useState<GridLayout>('1x1')
   const [isInitialized, setIsInitialized] = useState(false)
   const renderingEngineRef = useRef<RenderingEngine | null>(null)
 
@@ -52,6 +52,14 @@ export default function DicomViewerPage() {
     seriesInstanceUid || ''
   )
 
+  // DEBUG: useInstances 상태 로깅
+  console.log('[DicomViewerPage] useInstances state:', {
+    isLoading,
+    error: error?.message,
+    instancesCount: data?.instances?.length,
+    hasData: !!data,
+  })
+
   // Cornerstone store
   const {
     globalFps,
@@ -60,6 +68,7 @@ export default function DicomViewerPage() {
     assignInstanceToSlot,
     playAll,
     pauseAll,
+    stopAll,
     clearAllSlots,
   } = useCornerstoneMultiViewerStore()
 
@@ -67,33 +76,50 @@ export default function DicomViewerPage() {
   const currentLayoutSlots = LAYOUT_OPTIONS.find((o) => o.value === layout)?.slots || 1
 
   // ==================== Cornerstone 초기화 ====================
+  // React StrictMode에서 useEffect가 두 번 실행되는 문제 대응
+  // mounted 플래그 대신 initCornerstone의 전역 상태(isInitialized)를 사용하여 race condition 방지
 
   useEffect(() => {
-    let mounted = true
-
     const init = async () => {
       try {
+        console.log('[DicomViewerPage] Starting Cornerstone initialization...')
         await initCornerstone()
 
-        if (mounted && !renderingEngineRef.current) {
-          renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
+        // initCornerstone이 완료되면 전역 initialized = true
+        // 이 시점에서 Cornerstone은 확실히 초기화됨
+        console.log('[DicomViewerPage] initCornerstone completed, isCornerstoneInitialized:', isCornerstoneInitialized())
+
+        // RenderingEngine이 이미 있으면 재사용 (StrictMode 대응)
+        if (renderingEngineRef.current) {
+          console.log('[DicomViewerPage] RenderingEngine already exists, reusing')
           setIsInitialized(true)
-          console.log('[DicomViewerPage] Cornerstone initialized')
+          return
         }
+
+        // RenderingEngine 생성
+        renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
+        setIsInitialized(true)
+        console.log('[DicomViewerPage] ✅ Cornerstone and RenderingEngine initialized')
       } catch (error) {
-        console.error('[DicomViewerPage] Cornerstone initialization failed:', error)
+        console.error('[DicomViewerPage] ❌ Cornerstone initialization failed:', error)
       }
     }
 
     init()
+  }, [])
 
+  // 별도 클린업 effect - 컴포넌트가 완전히 unmount될 때만 실행
+  useEffect(() => {
     return () => {
-      mounted = false
+      console.log('[DicomViewerPage] Component unmounting - destroying RenderingEngine')
       if (renderingEngineRef.current) {
-        renderingEngineRef.current.destroy()
+        try {
+          renderingEngineRef.current.destroy()
+        } catch (e) {
+          console.warn('[DicomViewerPage] Error destroying RenderingEngine:', e)
+        }
         renderingEngineRef.current = null
       }
-      // 페이지 떠날 때 슬롯 초기화
       clearAllSlots()
     }
   }, [clearAllSlots])
@@ -101,7 +127,21 @@ export default function DicomViewerPage() {
   // ==================== 인스턴스 목록 로드 시 자동 슬롯 할당 ====================
 
   useEffect(() => {
-    if (!isInitialized || !instances.length || !studyInstanceUid || !seriesInstanceUid) return
+    // DEBUG: 자동 할당 조건 확인
+    console.log('[DicomViewerPage] Auto-assign effect check:', {
+      isInitialized,
+      instancesLength: instances.length,
+      studyInstanceUid: !!studyInstanceUid,
+      seriesInstanceUid: !!seriesInstanceUid,
+      currentLayoutSlots,
+    })
+
+    if (!isInitialized || !instances.length || !studyInstanceUid || !seriesInstanceUid) {
+      console.log('[DicomViewerPage] Auto-assign skipped - conditions not met')
+      return
+    }
+
+    console.log('[DicomViewerPage] Auto-assigning instances to slots...')
 
     // Store layout 동기화 (assignInstanceToSlot의 maxSlots 검사를 위해 필요)
     setStoreLayout(layout)
@@ -114,8 +154,11 @@ export default function DicomViewerPage() {
         seriesInstanceUid: seriesInstanceUid,
         numberOfFrames: instance.numberOfFrames || 1,
       }
+      console.log(`[DicomViewerPage] Assigning to slot ${index}:`, instance.sopInstanceUid?.slice(0, 20) + '...')
       assignInstanceToSlot(index, instanceSummary)
     })
+
+    console.log('[DicomViewerPage] Auto-assign completed')
   }, [isInitialized, instances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, layout, setStoreLayout])
 
   // ==================== 핸들러 ====================
@@ -356,7 +399,7 @@ export default function DicomViewerPage() {
 
       {/* ==================== Footer: Global Playback Controller ==================== */}
       <footer className="bg-gray-800 text-white p-4 border-t border-gray-700">
-        <div className="flex items-center justify-center gap-6">
+        <div className="flex items-center justify-center gap-4">
           {/* 전체 재생 */}
           <button
             onClick={playAll}
@@ -366,13 +409,22 @@ export default function DicomViewerPage() {
             <span className="text-sm font-medium">Play All</span>
           </button>
 
-          {/* 전체 중지 */}
+          {/* 전체 일시정지 */}
           <button
             onClick={pauseAll}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded transition-colors"
           >
             <Pause className="h-4 w-4" />
             <span className="text-sm font-medium">Pause All</span>
+          </button>
+
+          {/* 전체 정지 (처음으로 이동) */}
+          <button
+            onClick={stopAll}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
+          >
+            <Square className="h-4 w-4" />
+            <span className="text-sm font-medium">Stop All</span>
           </button>
 
           {/* 구분선 */}

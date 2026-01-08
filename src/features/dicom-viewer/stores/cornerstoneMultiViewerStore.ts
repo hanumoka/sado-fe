@@ -109,6 +109,7 @@ interface CornerstoneMultiViewerActions {
   // 글로벌 재생 제어
   playAll: () => void
   pauseAll: () => void
+  stopAll: () => void
   toggleGlobalPlay: () => void
 
   // 프리로딩
@@ -137,7 +138,7 @@ type CornerstoneMultiViewerStore = CornerstoneMultiViewerState & CornerstoneMult
 
 export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore>((set, get) => ({
   // 초기 상태
-  layout: '2x2',
+  layout: '1x1',
   apiType: 'wado-rs',
   globalFps: 30,
   slots: createInitialSlots(),
@@ -337,8 +338,9 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     const slot = get().slots[slotId]
     if (!slot?.instance) return
 
-    const maxFrame = slot.instance.numberOfFrames - 1
-    const nextFrame = Math.min(slot.currentFrame + 1, maxFrame)
+    const totalFrames = slot.instance.numberOfFrames
+    // 모듈로 연산으로 루프 재생 (마지막 프레임 다음 → 첫 프레임)
+    const nextFrame = (slot.currentFrame + 1) % totalFrames
 
     get().setSlotFrame(slotId, nextFrame)
   },
@@ -400,6 +402,33 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         updatedSlots[i] = {
           ...slot,
           isPlaying: false,
+        }
+      }
+    }
+
+    set((state) => ({
+      slots: {
+        ...state.slots,
+        ...updatedSlots,
+      },
+    }))
+  },
+
+  /**
+   * 전체 정지 (일시정지 + 첫 프레임으로 이동)
+   */
+  stopAll: () => {
+    const { slots, layout } = get()
+    const maxSlots = getMaxSlots(layout)
+    const updatedSlots: Record<number, CornerstoneSlotState> = {}
+
+    for (let i = 0; i < maxSlots; i++) {
+      const slot = slots[i]
+      if (slot) {
+        updatedSlots[i] = {
+          ...slot,
+          isPlaying: false,
+          currentFrame: 0,  // 첫 프레임으로 리셋
         }
       }
     }

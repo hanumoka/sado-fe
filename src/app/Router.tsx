@@ -52,8 +52,8 @@ export default function Router() {
           <Route path="admin/tiering" element={<TieringManagePage />} />
         </Route>
 
-        {/* DICOM Viewer (Full Screen - Layout 밖) */}
-        <Route path="/viewer/:studyInstanceUid/:seriesInstanceUid" element={<DicomViewerPage />} />
+        {/* DICOM Viewer POC: WADO-RS Rendered (Full Screen - Layout 밖) */}
+        <Route path="/viewer/wado-rs-rendered/:studyInstanceUid/:seriesInstanceUid" element={<DicomViewerPage />} />
 
         {/* Multi-Slot DICOM Viewer (Full Screen - Layout 밖) */}
         <Route path="/multi-viewer" element={<MultiSlotViewerPage />} />

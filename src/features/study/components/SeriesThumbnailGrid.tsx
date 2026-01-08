@@ -143,7 +143,8 @@ export default function SeriesThumbnailGrid({
     if (!series || !studyInstanceUid) return
 
     // studyInstanceUid와 seriesInstanceUid를 URL 파라미터로 전달
-    navigate(`/viewer/${studyInstanceUid}/${series.seriesInstanceUid}`)
+    // POC: WADO-RS Rendered 뷰어
+    navigate(`/viewer/wado-rs-rendered/${studyInstanceUid}/${series.seriesInstanceUid}`)
   }
 
   if (seriesList.length === 0) {

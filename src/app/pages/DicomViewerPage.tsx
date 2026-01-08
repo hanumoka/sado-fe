@@ -275,9 +275,14 @@ export default function DicomViewerPage() {
           </button>
 
           <div>
-            <h1 className="text-lg font-bold">
-              {data?.series?.modality || 'Series'} Viewer
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold">
+                {data?.series?.modality || 'Series'} Viewer
+              </h1>
+              <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                WADO-RS Rendered
+              </span>
+            </div>
             <p className="text-sm text-gray-400">
               {data?.series?.seriesDescription || seriesInstanceUid?.slice(0, 30) + '...'}
             </p>

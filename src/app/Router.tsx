@@ -57,7 +57,7 @@ export default function Router() {
         {/* DICOM Viewer POC: WADO-RS Rendered (Full Screen - Layout 밖) */}
         <Route path="/viewer/wado-rs-rendered/:studyInstanceUid/:seriesInstanceUid" element={<DicomViewerPage />} />
 
-        {/* DICOM Viewer POC: WADO-RS (Full Screen - Layout 밖) */}
+        {/* DICOM Viewer POC: WADO-RS BulkData (Full Screen - Layout 밖) */}
         <Route path="/viewer/wado-rs/:studyInstanceUid/:seriesInstanceUid" element={<WadoRsViewerPage />} />
 
         {/* DICOM Viewer POC: WADO-URI (Full Screen - Layout 밖) */}

@@ -9,14 +9,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Play, Pause, Square, Loader2, AlertCircle, Film, Image } from 'lucide-react'
-import { RenderingEngine, getRenderingEngine } from '@cornerstonejs/core'
+import { RenderingEngine } from '@cornerstonejs/core'
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useInstances } from '@/features/dicom-viewer/hooks/useInstances'
 import {
   useWadoUriMultiViewerStore,
   WadoUriSlot,
   WADO_URI_TOOL_GROUP_ID,
-  getWadoUriThumbnailUrl,
 } from '@/features/dicom-viewer-wado-uri'
 import { initCornerstone, isInitialized as isCornerstoneInitialized } from '@/lib/cornerstone/initCornerstone'
 import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'

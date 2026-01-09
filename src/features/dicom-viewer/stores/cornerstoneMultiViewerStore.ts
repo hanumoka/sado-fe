@@ -21,6 +21,7 @@ import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { imageLoader } from '@cornerstonejs/core'
 import { createWadoRsRenderedImageId } from '@/lib/cornerstone/wadoRsRenderedLoader'
+import { prefetchAllRenderedFrames } from '../utils/wadoRsRenderedPrefetcher'
 
 // ==================== 초기 상태 생성 ====================
 
@@ -591,7 +592,15 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   // ==================== 프리로딩 ====================
 
   /**
-   * 슬롯의 모든 프레임 프리로드
+   * 슬롯의 모든 프레임 프리로드 (2단계 최적화)
+   *
+   * Phase 1: 배치 API로 PNG 프리페치 (0-50%)
+   *   - /frames/1,2,3.../rendered 배치 요청
+   *   - Rendered 캐시에 PNG 데이터 저장
+   *
+   * Phase 2: Cornerstone 로드 (50-100%)
+   *   - imageLoader.loadImage() 호출
+   *   - Rendered Interceptor가 캐시에서 데이터 반환 (캐시 히트)
    */
   preloadSlotFrames: async (slotId) => {
     const slot = get().slots[slotId]
@@ -616,18 +625,36 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
+      const CORNERSTONE_BATCH_SIZE = getBatchSizeForLayout(get().layout)
+      const PREFETCH_BATCH_SIZE = 10 // 배치 API 최적 크기
+
+      console.log(`[MultiViewer] 2-Phase preload for slot ${slotId}: ${numberOfFrames} frames`)
+
+      // ==================== Phase 1: 배치 API로 PNG 프리페치 (0-50%) ====================
+      console.log(`[MultiViewer] Phase 1: Batch API prefetch for slot ${slotId}`)
+
+      await prefetchAllRenderedFrames(
+        studyInstanceUid,
+        seriesInstanceUid,
+        sopInstanceUid,
+        numberOfFrames,
+        PREFETCH_BATCH_SIZE,
+        (loaded, total) => {
+          // 0-50% 진행률
+          const progress = Math.round((loaded / total) * 50)
+          get().updateSlotPreloadProgress(slotId, progress)
+        }
+      )
+
+      console.log(`[MultiViewer] Phase 1 complete: PNG data cached for slot ${slotId}`)
+
+      // ==================== Phase 2: Cornerstone 로드 (50-100%) ====================
+      console.log(`[MultiViewer] Phase 2: Cornerstone load for slot ${slotId}`)
       let loadedCount = 0
-      const BATCH_SIZE = getBatchSizeForLayout(get().layout) // 레이아웃에 따라 동적 조정
 
-      // Cornerstone imageLoader를 사용하여 직접 캐시에 프리로드
-      // 이전: <img> 태그 → HTTP 캐시만 채움
-      // 변경: imageLoader.loadImage() → Cornerstone 내부 캐시에 저장
-      console.log(`[MultiViewer] Preloading slot ${slotId} with Cornerstone imageLoader (${numberOfFrames} frames, BATCH_SIZE=${BATCH_SIZE})`)
-
-      for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
+      for (let i = 0; i < numberOfFrames; i += CORNERSTONE_BATCH_SIZE) {
         const batch = []
-        for (let j = i; j < Math.min(i + BATCH_SIZE, numberOfFrames); j++) {
-          // Cornerstone imageId 생성 (wadors-rendered 스킴)
+        for (let j = i; j < Math.min(i + CORNERSTONE_BATCH_SIZE, numberOfFrames); j++) {
           const imageId = createWadoRsRenderedImageId(
             studyInstanceUid,
             seriesInstanceUid,
@@ -640,13 +667,14 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
               .loadImage(imageId)
               .then(() => {
                 loadedCount++
-                const progress = Math.round((loadedCount / numberOfFrames) * 100)
+                // 50-100% 진행률
+                const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
                 get().updateSlotPreloadProgress(slotId, progress)
               })
               .catch((error: unknown) => {
-                console.warn(`[MultiViewer] Failed to preload frame ${j} for slot ${slotId}:`, error)
+                console.warn(`[MultiViewer] Failed to load frame ${j} for slot ${slotId}:`, error)
                 loadedCount++
-                const progress = Math.round((loadedCount / numberOfFrames) * 100)
+                const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
                 get().updateSlotPreloadProgress(slotId, progress)
               })
           )
@@ -656,7 +684,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       }
 
       get().finishSlotPreload(slotId)
-      console.log(`[MultiViewer] Preload completed for slot ${slotId} (Cornerstone cache populated)`)
+      console.log(`[MultiViewer] 2-Phase preload completed for slot ${slotId}`)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)

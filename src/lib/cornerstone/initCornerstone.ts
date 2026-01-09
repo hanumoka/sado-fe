@@ -17,6 +17,7 @@ import * as cornerstone from '@cornerstonejs/core'
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
+import { registerWadoRsBulkDataMetadataProvider } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsBulkDataMetadataProvider'
 
 let initialized = false
 let initializingPromise: Promise<void> | null = null
@@ -72,6 +73,10 @@ export async function initCornerstone(): Promise<void> {
 
       // 3-1. WADO-RS Rendered 커스텀 로더 등록 (멀티 슬롯 뷰어용)
       registerWadoRsRenderedLoader()
+
+      // 3-2. WADO-RS BulkData 메타데이터 프로바이더 등록 (wadors: scheme 지원)
+      registerWadoRsBulkDataMetadataProvider()
+
       console.log('[Cornerstone] Step 3: Image loaders registered')
 
       // 4. Cornerstone Tools 초기화

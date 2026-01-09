@@ -17,6 +17,7 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMultiViewerStore'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
+import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { useShallow } from 'zustand/react/shallow'
 import { WadoRsBulkDataSlotOverlay } from './WadoRsBulkDataSlotOverlay'
 import type { WadoRsBulkDataInstanceSummary } from '../types/wadoRsBulkDataTypes'
@@ -203,6 +204,16 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
           sopInstanceUid: sopInstanceUid.slice(0, 20) + '...',
           numberOfFrames,
         })
+      }
+
+      // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone이 PixelData를 디코딩할 수 있음
+      try {
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Fetching metadata before setStack...`)
+        await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Metadata cached`)
+      } catch (metadataError) {
+        console.error(`[WadoRsBulkDataSlot ${slotId}] Failed to fetch metadata:`, metadataError)
+        // 메타데이터 실패해도 계속 진행 (fallback 값 사용)
       }
 
       // WADO-RS BulkData imageIds 생성

@@ -19,6 +19,7 @@ import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoRsBulkDataImageId } from '../utils/wadoRsBulkDataImageIdHelper'
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
+import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 
 // ==================== 초기 상태 생성 ====================
 
@@ -229,6 +230,13 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     const maxSlots = getMaxSlots(get().layout)
     if (slotId < 0 || slotId >= maxSlots) {
       console.warn(`[WadoRsBulkDataViewer] Invalid slot ID: ${slotId}`)
+      return
+    }
+
+    // 중복 방지: 같은 인스턴스가 이미 할당되어 있으면 무시
+    const currentInstance = get().slots[slotId]?.instance
+    if (currentInstance?.sopInstanceUid === instance.sopInstanceUid) {
+      console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already has instance ${instance.sopInstanceUid}, skipping`)
       return
     }
 
@@ -567,6 +575,11 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
       let loadedCount = 0
       const BATCH_SIZE = getBatchSizeForLayout(get().layout)
+
+      // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone wadors 로더가 PixelData를 디코딩할 수 있음
+      console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
+      await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
+      console.log(`[WadoRsBulkDataViewer] Metadata cached for slot ${slotId}`)
 
       // WADO-RS BulkData imageLoader 사용 (cornerstoneDICOMImageLoader wadors: scheme)
       console.log(`[WadoRsBulkDataViewer] Preloading slot ${slotId} with WADO-RS BulkData imageLoader (${numberOfFrames} frames, BATCH_SIZE=${BATCH_SIZE})`)

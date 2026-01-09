@@ -13,8 +13,12 @@
  */
 import { metaData } from '@cornerstonejs/core'
 import { getTenantId } from '@/lib/tenantStore'
+import { API_BASE_URL } from '@/lib/config'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_PROVIDER = false
+
+const API_BASE = API_BASE_URL
 
 /**
  * DICOM 픽셀 메타데이터
@@ -171,7 +175,7 @@ async function fetchMetadataFromBackend(
 
   // 캐시에 저장
   metadataCache.set(sopInstanceUid, metadata)
-  console.log(`[WadoRsBulkDataMetadataProvider] Metadata cached for ${sopInstanceUid}:`, metadata)
+  if (DEBUG_PROVIDER) console.log(`[WadoRsBulkDataMetadataProvider] Metadata cached for ${sopInstanceUid}:`, metadata)
 
   return metadata
 }
@@ -199,7 +203,7 @@ function wadoRsBulkDataMetadataProvider(type: string, imageId: string): unknown 
   const cached = metadataCache.get(parsed.sopInstanceUid)
   if (!cached) {
     // 메타데이터가 아직 캐시되지 않음 - 이미지 로드 전에 fetchAndCacheMetadata가 호출되어야 함
-    console.warn(
+    if (DEBUG_PROVIDER) console.warn(
       `[WadoRsBulkDataMetadataProvider] Metadata not cached for ${parsed.sopInstanceUid}. ` +
         'Call fetchAndCacheMetadata before loading images.'
     )
@@ -269,7 +273,7 @@ function wadoRsBulkDataMetadataProvider(type: string, imageId: string): unknown 
 export function registerWadoRsBulkDataMetadataProvider(): void {
   // 높은 우선순위로 등록 (다른 프로바이더보다 먼저 호출됨)
   metaData.addProvider(wadoRsBulkDataMetadataProvider, 10000)
-  console.log('[WadoRsBulkDataMetadataProvider] Metadata provider registered')
+  if (DEBUG_PROVIDER) console.log('[WadoRsBulkDataMetadataProvider] Metadata provider registered')
 }
 
 /**
@@ -281,7 +285,7 @@ export function clearMetadataCache(): void {
   const prevSize = metadataCache.size
   metadataCache.clear()
   pendingFetches.clear()
-  console.log(`[WadoRsBulkDataMetadataProvider] Metadata cache cleared (was ${prevSize} items)`)
+  if (DEBUG_PROVIDER) console.log(`[WadoRsBulkDataMetadataProvider] Metadata cache cleared (was ${prevSize} items)`)
 }
 
 /**

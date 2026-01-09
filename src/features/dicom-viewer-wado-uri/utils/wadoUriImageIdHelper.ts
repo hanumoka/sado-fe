@@ -5,7 +5,9 @@
  * cornerstoneWADOImageLoader가 처리하는 'wadouri:' 스킴 사용
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
+import { API_BASE_URL } from '@/lib/config'
+
+const API_BASE = API_BASE_URL
 
 /**
  * WADO-URI imageId 생성

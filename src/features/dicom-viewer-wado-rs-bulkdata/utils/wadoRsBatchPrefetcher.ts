@@ -17,9 +17,11 @@
 
 import { retrieveFrameBatch } from '@/lib/services/dicomWebService'
 import { cachePixelData, hasPixelData } from './wadoRsPixelDataCache'
+import { API_BASE_URL } from '@/lib/config'
+import { formatBytes } from '@/lib/utils'
 
-// 디버그 로그 플래그 (테스트 후 false로 변경)
-const DEBUG_PREFETCHER = true
+// 디버그 로그 플래그
+const DEBUG_PREFETCHER = false
 
 // 프리페치 통계
 let totalPrefetchCalls = 0
@@ -44,8 +46,7 @@ function buildFrameUrl(
   sopInstanceUid: string,
   frameNumber: number
 ): string {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
-  return `${baseUrl}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+  return `${API_BASE_URL}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
 }
 
 /**
@@ -79,7 +80,7 @@ export async function prefetchFrameBatch(
 
   if (uncachedFrames.length === 0) {
     if (DEBUG_PREFETCHER) {
-      console.log(
+      if (DEBUG_PREFETCHER) console.log(
         `[WadoRsBatchPrefetcher] All ${frameNumbers.length} frames already cached, skipping`
       )
     }
@@ -88,7 +89,7 @@ export async function prefetchFrameBatch(
   }
 
   if (DEBUG_PREFETCHER) {
-    console.log(
+    if (DEBUG_PREFETCHER) console.log(
       `[WadoRsBatchPrefetcher] Prefetching ${uncachedFrames.length} frames (${frameNumbers.length - uncachedFrames.length} already cached)`
     )
   }
@@ -121,14 +122,14 @@ export async function prefetchFrameBatch(
     }
 
     if (DEBUG_PREFETCHER) {
-      console.log(
+      if (DEBUG_PREFETCHER) console.log(
         `[WadoRsBatchPrefetcher] Prefetched ${frameDataMap.size} frames (${formatBytes(bytesCached)})`
       )
     }
 
     return cached
   } catch (error) {
-    console.error('[WadoRsBatchPrefetcher] Prefetch failed:', error)
+    if (DEBUG_PREFETCHER) console.error('[WadoRsBatchPrefetcher] Prefetch failed:', error)
     throw error
   }
 }
@@ -159,7 +160,7 @@ export async function prefetchAllFrames(
   }
 
   if (DEBUG_PREFETCHER) {
-    console.log(
+    if (DEBUG_PREFETCHER) console.log(
       `[WadoRsBatchPrefetcher] Starting prefetch of ${totalFrames} frames in batches of ${batchSize}`
     )
   }
@@ -187,7 +188,7 @@ export async function prefetchAllFrames(
   }
 
   if (DEBUG_PREFETCHER) {
-    console.log(`[WadoRsBatchPrefetcher] Prefetch complete: ${totalCached}/${totalFrames} frames`)
+    if (DEBUG_PREFETCHER) if (DEBUG_PREFETCHER) console.log(`[WadoRsBatchPrefetcher] Prefetch complete: ${totalCached}/${totalFrames} frames`)
   }
 
   return totalCached
@@ -221,14 +222,3 @@ export function resetPrefetcherStats(): void {
   totalBytesPrefetched = 0
 }
 
-/**
- * 바이트를 읽기 쉬운 형식으로 변환
- *
- * @param bytes 바이트 수
- * @returns 형식화된 문자열
- */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}

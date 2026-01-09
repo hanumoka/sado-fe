@@ -22,6 +22,9 @@ import { createWadoRsBulkDataImageId } from '../utils/wadoRsBulkDataImageIdHelpe
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
 import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
+
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_STORE = false
 // 기존 배치 로더는 IImage 구조 문제로 비활성화
 // 대신 prefetchAllFrames + Fetch Interceptor 방식 사용 (안전한 방식)
 // import { loadAndCacheFrameBatch } from '../utils/wadoRsBulkDataBatchLoader'
@@ -184,7 +187,7 @@ async function waitForPreloadComplete(
       }
 
       if (Date.now() - startTime > timeout) {
-        console.warn(`[WadoRsBulkDataViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
+        if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
         resolve()
         return
       }
@@ -259,7 +262,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
 
     // 이미 리로딩 중이면 무시
     if (get().isReloading) {
-      console.warn('[WadoRsBulkDataViewer] Already reloading, skipping')
+      if (DEBUG_STORE) console.warn('[WadoRsBulkDataViewer] Already reloading, skipping')
       return
     }
 
@@ -280,12 +283,12 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       }
 
       if (multiframeSlotIds.length === 0) {
-        console.warn('[WadoRsBulkDataViewer] No multiframe slots to reload')
+        if (DEBUG_STORE) console.warn('[WadoRsBulkDataViewer] No multiframe slots to reload')
         set({ isReloading: false })
         return
       }
 
-      console.log(`[WadoRsBulkDataViewer] Reloading ${multiframeSlotIds.length} slots with batchSize=${batchSize}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Reloading ${multiframeSlotIds.length} slots with batchSize=${batchSize}`)
 
       // 각 슬롯의 프리로드 상태 초기화
       for (const slotId of multiframeSlotIds) {
@@ -326,9 +329,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         isReloading: false,
       })
 
-      console.log(`[WadoRsBulkDataViewer] Reload complete: ${totalFrames} frames in ${loadTimeMs.toFixed(0)}ms (${requestCount} batches)`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Reload complete: ${totalFrames} frames in ${loadTimeMs.toFixed(0)}ms (${requestCount} batches)`)
     } catch (error) {
-      console.error('[WadoRsBulkDataViewer] Reload failed:', error)
+      if (DEBUG_STORE) console.error('[WadoRsBulkDataViewer] Reload failed:', error)
       set({ isReloading: false })
     }
   },
@@ -338,14 +341,14 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   assignInstanceToSlot: (slotId, instance) => {
     const maxSlots = getMaxSlots(get().layout)
     if (slotId < 0 || slotId >= maxSlots) {
-      console.warn(`[WadoRsBulkDataViewer] Invalid slot ID: ${slotId}`)
+      if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Invalid slot ID: ${slotId}`)
       return
     }
 
     // 중복 방지: 같은 인스턴스가 이미 할당되어 있으면 무시
     const currentInstance = get().slots[slotId]?.instance
     if (currentInstance?.sopInstanceUid === instance.sopInstanceUid) {
-      console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already has instance ${instance.sopInstanceUid}, skipping`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already has instance ${instance.sopInstanceUid}, skipping`)
       return
     }
 
@@ -407,7 +410,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         },
       }))
 
-      console.log(`[WadoRsBulkDataViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'loadSlotInstance')
 
@@ -444,17 +447,17 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   playSlot: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot?.instance || slot.instance.numberOfFrames <= 1) {
-      console.warn(`[WadoRsBulkDataViewer] Cannot play slot ${slotId}: no multiframe instance`)
+      if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Cannot play slot ${slotId}: no multiframe instance`)
       return
     }
 
     if (!slot.isPreloaded && !slot.isPreloading) {
-      console.log(`[WadoRsBulkDataViewer] Starting preload before play for slot ${slotId}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload before play for slot ${slotId}`)
       await get().preloadSlotFrames(slotId)
     }
 
     if (get().slots[slotId]?.isPreloading) {
-      console.log(`[WadoRsBulkDataViewer] Waiting for preload to complete for slot ${slotId}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Waiting for preload to complete for slot ${slotId}`)
       await waitForPreloadComplete(slotId, get)
     }
 
@@ -555,22 +558,22 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     }
 
     if (multiframeSlotIds.length === 0) {
-      console.warn('[WadoRsBulkDataViewer] No multiframe slots to play')
+      if (DEBUG_STORE) console.warn('[WadoRsBulkDataViewer] No multiframe slots to play')
       return
     }
 
-    console.log(`[WadoRsBulkDataViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
       if (slot?.isPreloaded) {
-        console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloaded, skipping`)
+        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloaded, skipping`)
         continue
       }
       if (slot?.isPreloading) {
-        console.log(`[WadoRsBulkDataViewer] Waiting for slot ${slotId} preload to complete`)
+        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Waiting for slot ${slotId} preload to complete`)
         await waitForPreloadComplete(slotId, get)
       } else {
-        console.log(`[WadoRsBulkDataViewer] Starting preload for slot ${slotId}`)
+        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload for slot ${slotId}`)
         await get().preloadSlotFrames(slotId)
       }
     }
@@ -593,7 +596,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       },
     }))
 
-    console.log(`[WadoRsBulkDataViewer] playAll started for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] playAll started for ${multiframeSlotIds.length} slots`)
   },
 
   pauseAll: () => {
@@ -663,12 +666,12 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   preloadSlotFrames: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot?.instance) {
-      console.warn(`[WadoRsBulkDataViewer] Cannot preload slot ${slotId}: no instance`)
+      if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Cannot preload slot ${slotId}: no instance`)
       return
     }
 
     if (slot.isPreloading || slot.isPreloaded) {
-      console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloading or preloaded`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloading or preloaded`)
       return
     }
 
@@ -686,13 +689,13 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       const PREFETCH_BATCH_SIZE = 10 // 배치 API 호출 시 프레임 수
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone wadors 로더가 PixelData를 디코딩할 수 있음
-      console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
       await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
-      console.log(`[WadoRsBulkDataViewer] Metadata cached for slot ${slotId}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Metadata cached for slot ${slotId}`)
 
       // Phase 1: 배치 API로 PixelData 프리페치 (캐시에 저장)
       // HTTP 요청 90% 절감: 100프레임 = 10회 요청 (vs 기존 100회)
-      console.log(`[WadoRsBulkDataViewer] Phase 1: Prefetching ${numberOfFrames} frames via batch API (batch size: ${PREFETCH_BATCH_SIZE})`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1: Prefetching ${numberOfFrames} frames via batch API (batch size: ${PREFETCH_BATCH_SIZE})`)
 
       await prefetchAllFrames(
         studyInstanceUid,
@@ -707,11 +710,11 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         }
       )
 
-      console.log(`[WadoRsBulkDataViewer] Phase 1 complete: PixelData cached`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1 complete: PixelData cached`)
 
       // Phase 2: Cornerstone 로더로 이미지 로드 (캐시 히트 발생!)
       // Fetch Interceptor가 캐시된 PixelData 반환 → HTTP 요청 없음
-      console.log(`[WadoRsBulkDataViewer] Phase 2: Loading images via Cornerstone (cache hit expected)`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 2: Loading images via Cornerstone (cache hit expected)`)
 
       let loadedCount = 0
       for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
@@ -733,7 +736,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
                 get().updateSlotPreloadProgress(slotId, progress)
               })
               .catch((error: unknown) => {
-                console.warn(`[WadoRsBulkDataViewer] Failed to load frame ${j} for slot ${slotId}:`, error)
+                if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Failed to load frame ${j} for slot ${slotId}:`, error)
                 loadedCount++
                 const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
                 get().updateSlotPreloadProgress(slotId, progress)
@@ -745,7 +748,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       }
 
       get().finishSlotPreload(slotId)
-      console.log(`[WadoRsBulkDataViewer] Preload completed for slot ${slotId} (batch API optimized)`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Preload completed for slot ${slotId} (batch API optimized)`)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)
@@ -950,7 +953,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       thumbnailsLoaded: new Set<string>(),
       allThumbnailsLoaded: count === 0,
     })
-    console.log(`[WadoRsBulkDataViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
+    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
   },
 
   markThumbnailLoaded: (sopInstanceUid) => {
@@ -969,7 +972,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     })
 
     if (allLoaded) {
-      console.log(`[WadoRsBulkDataViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
     }
   },
 

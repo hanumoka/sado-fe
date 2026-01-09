@@ -20,6 +20,9 @@ import { initCornerstone, isInitialized as isCornerstoneInitialized } from '@/li
 import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'
 import type { InstanceSummary } from '@/features/dicom-viewer/types/multiSlotViewer'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_PAGE = false
+
 type GridLayout = '1x1' | '2x2' | '3x3' | '4x4'
 type InstanceFilter = 'all' | 'playable'
 
@@ -56,7 +59,7 @@ export default function DicomViewerPage() {
   )
 
   // DEBUG: useInstances 상태 로깅
-  console.log('[DicomViewerPage] useInstances state:', {
+  if (DEBUG_PAGE) console.log('[DicomViewerPage] useInstances state:', {
     isLoading,
     error: error?.message,
     instancesCount: data?.instances?.length,
@@ -118,16 +121,16 @@ export default function DicomViewerPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        console.log('[DicomViewerPage] Starting Cornerstone initialization...')
+        if (DEBUG_PAGE) console.log('[DicomViewerPage] Starting Cornerstone initialization...')
         await initCornerstone()
 
         // initCornerstone이 완료되면 전역 initialized = true
         // 이 시점에서 Cornerstone은 확실히 초기화됨
-        console.log('[DicomViewerPage] initCornerstone completed, isCornerstoneInitialized:', isCornerstoneInitialized())
+        if (DEBUG_PAGE) console.log('[DicomViewerPage] initCornerstone completed, isCornerstoneInitialized:', isCornerstoneInitialized())
 
         // RenderingEngine이 이미 있으면 재사용 (StrictMode 대응)
         if (renderingEngineRef.current) {
-          console.log('[DicomViewerPage] RenderingEngine already exists, reusing')
+          if (DEBUG_PAGE) console.log('[DicomViewerPage] RenderingEngine already exists, reusing')
           setIsInitialized(true)
           return
         }
@@ -135,9 +138,9 @@ export default function DicomViewerPage() {
         // RenderingEngine 생성
         renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
         setIsInitialized(true)
-        console.log('[DicomViewerPage] ✅ Cornerstone and RenderingEngine initialized')
+        if (DEBUG_PAGE) console.log('[DicomViewerPage] ✅ Cornerstone and RenderingEngine initialized')
       } catch (error) {
-        console.error('[DicomViewerPage] ❌ Cornerstone initialization failed:', error)
+        if (DEBUG_PAGE) console.error('[DicomViewerPage] ❌ Cornerstone initialization failed:', error)
       }
     }
 
@@ -147,12 +150,12 @@ export default function DicomViewerPage() {
   // 별도 클린업 effect - 컴포넌트가 완전히 unmount될 때만 실행
   useEffect(() => {
     return () => {
-      console.log('[DicomViewerPage] Component unmounting - destroying RenderingEngine')
+      if (DEBUG_PAGE) console.log('[DicomViewerPage] Component unmounting - destroying RenderingEngine')
       if (renderingEngineRef.current) {
         try {
           renderingEngineRef.current.destroy()
         } catch (e) {
-          console.warn('[DicomViewerPage] Error destroying RenderingEngine:', e)
+          if (DEBUG_PAGE) console.warn('[DicomViewerPage] Error destroying RenderingEngine:', e)
         }
         renderingEngineRef.current = null
       }
@@ -164,7 +167,7 @@ export default function DicomViewerPage() {
 
   useEffect(() => {
     // DEBUG: 자동 할당 조건 확인
-    console.log('[DicomViewerPage] Auto-assign effect check:', {
+    if (DEBUG_PAGE) console.log('[DicomViewerPage] Auto-assign effect check:', {
       isInitialized,
       filteredInstancesLength: filteredInstances.length,
       studyInstanceUid: !!studyInstanceUid,
@@ -173,11 +176,11 @@ export default function DicomViewerPage() {
     })
 
     if (!isInitialized || !filteredInstances.length || !studyInstanceUid || !seriesInstanceUid) {
-      console.log('[DicomViewerPage] Auto-assign skipped - conditions not met')
+      if (DEBUG_PAGE) console.log('[DicomViewerPage] Auto-assign skipped - conditions not met')
       return
     }
 
-    console.log('[DicomViewerPage] Auto-assigning instances to slots...')
+    if (DEBUG_PAGE) console.log('[DicomViewerPage] Auto-assigning instances to slots...')
 
     // Store layout 동기화 (assignInstanceToSlot의 maxSlots 검사를 위해 필요)
     setStoreLayout(layout)
@@ -194,7 +197,7 @@ export default function DicomViewerPage() {
       assignInstanceToSlot(index, instanceSummary)
     })
 
-    console.log('[DicomViewerPage] Auto-assign completed')
+    if (DEBUG_PAGE) console.log('[DicomViewerPage] Auto-assign completed')
   }, [isInitialized, filteredInstances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, layout, setStoreLayout])
 
   // ==================== 핸들러 ====================

@@ -65,7 +65,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   )
 
   if (DEBUG_SLOT) {
-    console.log(`[WadoRsBulkDataSlot ${slotId}] RENDER - instance:`, !!instance, 'loading:', loading)
+    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] RENDER - instance:`, !!instance, 'loading:', loading)
   }
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -97,7 +97,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         const instance: WadoRsBulkDataInstanceSummary = JSON.parse(instanceData)
         assignInstanceToSlot(slotId, instance)
       } catch (error) {
-        console.error('[WadoRsBulkDataSlot] Drop failed:', error)
+        if (DEBUG_SLOT) console.error('[WadoRsBulkDataSlot] Drop failed:', error)
       }
     },
     [slotId, assignInstanceToSlot]
@@ -107,19 +107,19 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
   useEffect(() => {
     if (DEBUG_SLOT) {
-      console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport init effect CALLED - containerRef:`, !!containerRef.current, 'instance:', !!instance, 'loading:', loading)
+      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport init effect CALLED - containerRef:`, !!containerRef.current, 'instance:', !!instance, 'loading:', loading)
     }
 
     if (!containerRef.current) {
-      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Early return - no containerRef`)
+      if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Early return - no containerRef`)
       return
     }
 
-    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport init effect triggered`)
+    if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport init effect triggered`)
 
     const renderingEngine = csGetRenderingEngine(renderingEngineId)
     if (!renderingEngine) {
-      console.warn(`[WadoRsBulkDataSlot ${slotId}] RenderingEngine not found`)
+      if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] RenderingEngine not found`)
       return
     }
 
@@ -142,20 +142,20 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
       viewportRef.current = renderingEngine.getViewport(viewportId) as Types.IStackViewport
       setIsViewportReady(true)
-      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport created, isViewportReady: true`)
+      if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport created, isViewportReady: true`)
 
       // ToolGroup에 viewport 연결
       const toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(WADO_RS_BULKDATA_TOOL_GROUP_ID)
       if (toolGroup) {
         try {
           toolGroup.addViewport(viewportId, renderingEngineId)
-          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport added to ToolGroup`)
+          if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport added to ToolGroup`)
         } catch (e) {
           // 이미 추가된 경우 무시
         }
       }
     } catch (error) {
-      if (DEBUG_SLOT) console.error(`[WadoRsBulkDataSlot ${slotId}] Viewport creation failed:`, error)
+      if (DEBUG_SLOT) if (DEBUG_SLOT) console.error(`[WadoRsBulkDataSlot ${slotId}] Viewport creation failed:`, error)
     }
 
     return () => {
@@ -173,7 +173,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
       if (re) {
         try {
           re.disableElement(viewportId)
-          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport disabled (cleanup)`)
+          if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Viewport disabled (cleanup)`)
         } catch (e) {
           // 이미 제거된 경우 무시
         }
@@ -186,7 +186,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
   useEffect(() => {
     if (DEBUG_SLOT) {
-      console.log(`[WadoRsBulkDataSlot ${slotId}] Stack effect - isViewportReady:`, isViewportReady, 'viewportRef:', !!viewportRef.current, 'instance:', !!instance)
+      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Stack effect - isViewportReady:`, isViewportReady, 'viewportRef:', !!viewportRef.current, 'instance:', !!instance)
     }
 
     if (!viewportRef.current || !instance || !isViewportReady) {
@@ -200,7 +200,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, numberOfFrames } = instance
 
       if (DEBUG_SLOT) {
-        console.log(`[WadoRsBulkDataSlot ${slotId}] Loading stack:`, {
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Loading stack:`, {
           sopInstanceUid: sopInstanceUid.slice(0, 20) + '...',
           numberOfFrames,
         })
@@ -208,11 +208,11 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone이 PixelData를 디코딩할 수 있음
       try {
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Fetching metadata before setStack...`)
+        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Fetching metadata before setStack...`)
         await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Metadata cached`)
+        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Metadata cached`)
       } catch (metadataError) {
-        console.error(`[WadoRsBulkDataSlot ${slotId}] Failed to fetch metadata:`, metadataError)
+        if (DEBUG_SLOT) console.error(`[WadoRsBulkDataSlot ${slotId}] Failed to fetch metadata:`, metadataError)
         // 메타데이터 실패해도 계속 진행 (fallback 값 사용)
       }
 
@@ -225,19 +225,19 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
       )
 
       try {
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
+        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
         await viewportRef.current!.setStack(imageIds)
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] setStack completed`)
+        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] setStack completed`)
 
         // 첫 프레임 로드
         if (imageIds.length > 0) {
-          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling loadImage for first frame...`)
+          if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling loadImage for first frame...`)
           await imageLoader.loadImage(imageIds[0])
-          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] loadImage completed`)
+          if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] loadImage completed`)
         }
 
         // 인덱스 설정 및 렌더링
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Setting imageIdIndex to 0...`)
+        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Setting imageIdIndex to 0...`)
         viewportRef.current!.setImageIdIndex(0)
 
         // viewport resize 및 카메라 리셋
@@ -251,7 +251,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         if (DEBUG_SLOT) {
           const canvas = viewportRef.current!.getCanvas()
           const element = containerRef.current!
-          console.log(`[WadoRsBulkDataSlot ${slotId}] DEBUG after render:`, {
+          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] DEBUG after render:`, {
             canvasWidth: canvas.width,
             canvasHeight: canvas.height,
             elementClientWidth: element.clientWidth,
@@ -262,12 +262,12 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         }
 
         setIsStackLoaded(true)
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Stack loaded with ${imageIds.length} frames`)
+        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Stack loaded with ${imageIds.length} frames`)
 
         // Viewport를 WadoRsBulkDataCineAnimationManager에 등록
         wadoRsBulkDataCineAnimationManager.registerViewport(slotId, viewportRef.current!, numberOfFrames)
       } catch (error) {
-        console.error(`[WadoRsBulkDataSlot ${slotId}] Stack load failed:`, error)
+        if (DEBUG_SLOT) console.error(`[WadoRsBulkDataSlot ${slotId}] Stack load failed:`, error)
         setIsStackLoaded(false)
       }
     }
@@ -288,12 +288,12 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
     // 썸네일 로딩 완료 대기 (썸네일 우선 전략)
     if (!allThumbnailsLoaded) {
-      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Waiting for thumbnails before preload`)
+      if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Waiting for thumbnails before preload`)
       return
     }
 
     // 인스턴스 할당 후 자동 프리로드
-    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Starting preload (thumbnails loaded)`)
+    if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Starting preload (thumbnails loaded)`)
     preloadSlotFrames(slotId)
   }, [instance?.sopInstanceUid, isPreloaded, isPreloading, allThumbnailsLoaded, slotId, preloadSlotFrames])
 
@@ -309,7 +309,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
       viewportRef.current.setImageIdIndex(currentFrame)
       viewportRef.current.render()
     } catch (error) {
-      if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] Frame ${currentFrame} not ready yet`)
+      if (DEBUG_SLOT) if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] Frame ${currentFrame} not ready yet`)
     }
   }, [currentFrame, instance, isStackLoaded, isPlaying, slotId])
 
@@ -339,7 +339,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
   // 빈 슬롯
   if (!instance) {
-    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Returning EMPTY slot JSX`)
+    if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Returning EMPTY slot JSX`)
     return (
       <div
         key="empty"
@@ -371,7 +371,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
   // 로딩 상태
   if (loading) {
-    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Returning LOADING JSX`)
+    if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Returning LOADING JSX`)
     return (
       <div className="relative bg-gray-900 rounded-lg flex items-center justify-center min-h-[200px] w-full h-full">
         <div className="text-center text-gray-400">
@@ -407,7 +407,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   }
 
   // 정상 상태 - viewport 렌더링
-  if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Returning VIEWPORT JSX`)
+  if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Returning VIEWPORT JSX`)
   return (
     <div
       key="viewport"

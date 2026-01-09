@@ -8,12 +8,16 @@ import {
   cornerstoneTools,
 } from '@/lib/cornerstone'
 import { getWadoUriUrl } from '@/lib/services'
+import { API_BASE_URL } from '@/lib/config'
 import type {
   ViewerTool,
   WindowLevelPreset,
   ViewerSeries,
   ViewerInstance,
 } from '../types/viewer'
+
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_VIEWER = false
 
 /**
  * DicomViewer.tsx
@@ -114,11 +118,10 @@ export default function DicomViewer({
           series.seriesInstanceUid,
           instance.sopInstanceUid
         )
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
-        return `wadouri:${API_BASE}${wadoUrl}`
+        return `wadouri:${API_BASE_URL}${wadoUrl}`
       })
 
-      console.log('[DicomViewer] Loading 2x2 grid with', allImageIds.length, 'total images')
+      if (DEBUG_VIEWER) console.log('[DicomViewer] Loading 2x2 grid with', allImageIds.length, 'total images')
 
       for (let i = 0; i < VIEWPORT_IDS.length; i++) {
         const viewport = renderingEngineRef.current.getViewport(VIEWPORT_IDS[i])
@@ -137,7 +140,7 @@ export default function DicomViewer({
         }
       }
 
-      console.log('[DicomViewer] 2x2 grid loaded successfully')
+      if (DEBUG_VIEWER) console.log('[DicomViewer] 2x2 grid loaded successfully')
 
       setIsLoading(false)
       setLoadError(null)

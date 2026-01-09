@@ -121,7 +121,7 @@ class WadoRsBulkDataCineAnimationManager {
           viewport.setImageIdIndex(nextIndex)
           viewport.render()
         } catch (error) {
-          console.error(`[WadoRsBulkDataCineManager] Error updating viewport for slot ${slotId}:`, error)
+          if (DEBUG_CINE) console.error(`[WadoRsBulkDataCineManager] Error updating viewport for slot ${slotId}:`, error)
         }
       })
     }

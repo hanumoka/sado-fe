@@ -15,6 +15,9 @@ import type { GridLayout } from '../types/multiSlotViewer'
 import { CornerstoneSlot } from './CornerstoneSlot'
 import { CornerstoneGlobalControls } from './CornerstoneGlobalControls'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_VIEWER = false
+
 const RENDERING_ENGINE_ID = 'cornerstoneMultiViewerEngine'
 const TOOL_GROUP_ID = 'cornerstoneMultiViewerToolGroup'
 
@@ -71,13 +74,13 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
 
         if (mounted && !renderingEngineRef.current) {
           renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
-          console.log('[CornerstoneMultiViewer] RenderingEngine created')
+          if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] RenderingEngine created')
 
           // ToolGroup 생성 및 도구 활성화
           let toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(TOOL_GROUP_ID)
           if (!toolGroup) {
             toolGroup = cornerstoneTools.ToolGroupManager.createToolGroup(TOOL_GROUP_ID)
-            console.log('[CornerstoneMultiViewer] ToolGroup created')
+            if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] ToolGroup created')
           }
 
           if (toolGroup) {
@@ -100,7 +103,7 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
             toolGroup.setToolActive(cornerstoneTools.ZoomTool.toolName, {
               bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Secondary }]
             })
-            console.log('[CornerstoneMultiViewer] Tools activated: WindowLevel(left), Pan(middle), Zoom(right)')
+            if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] Tools activated: WindowLevel(left), Pan(middle), Zoom(right)')
           }
         }
       } catch (error) {
@@ -115,14 +118,14 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
       // ToolGroup 제거
       try {
         cornerstoneTools.ToolGroupManager.destroyToolGroup(TOOL_GROUP_ID)
-        console.log('[CornerstoneMultiViewer] ToolGroup destroyed')
+        if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] ToolGroup destroyed')
       } catch (e) {
         // 이미 제거된 경우 무시
       }
       if (renderingEngineRef.current) {
         renderingEngineRef.current.destroy()
         renderingEngineRef.current = null
-        console.log('[CornerstoneMultiViewer] RenderingEngine destroyed')
+        if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] RenderingEngine destroyed')
       }
     }
   }, [])

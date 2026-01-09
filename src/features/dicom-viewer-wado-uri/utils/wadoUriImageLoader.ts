@@ -15,6 +15,9 @@
  */
 import { imageLoader, type Types } from '@cornerstonejs/core'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_LOADER = false
+
 // ==================== 캐시 설정 ====================
 /**
  * 최대 캐시 크기 (이미지 개수)
@@ -176,7 +179,7 @@ export function clearPendingLoads(): void {
 export function clearImageCache(): void {
   const prevSize = imageCache.size
   imageCache.clear()
-  console.log(`[WadoUriImageLoader] Image cache cleared (was ${prevSize} items)`)
+  if (DEBUG_LOADER) console.log(`[WadoUriImageLoader] Image cache cleared (was ${prevSize} items)`)
 }
 
 /**
@@ -193,7 +196,7 @@ export function clearInstanceCache(sopInstanceUid: string): number {
     }
   }
   if (cleared > 0) {
-    console.log(`[WadoUriImageLoader] Cleared ${cleared} cached frames for instance: ${sopInstanceUid}`)
+    if (DEBUG_LOADER) console.log(`[WadoUriImageLoader] Cleared ${cleared} cached frames for instance: ${sopInstanceUid}`)
   }
   return cleared
 }

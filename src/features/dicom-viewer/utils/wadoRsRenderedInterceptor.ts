@@ -14,8 +14,8 @@
 
 import { getCachedRenderedFrame } from './wadoRsRenderedCache'
 
-// 디버그 로그 플래그 (테스트 후 false로 변경)
-const DEBUG_INTERCEPTOR = true
+// 디버그 로그 플래그
+const DEBUG_INTERCEPTOR = false
 
 // 원본 fetch 함수 저장
 let originalFetch: typeof window.fetch | null = null
@@ -97,7 +97,7 @@ function createCachedResponse(data: ArrayBuffer, _url: string): Response {
 export function enableRenderedInterceptor(): void {
   if (isInterceptorEnabled) {
     if (DEBUG_INTERCEPTOR) {
-      console.log('[RenderedInterceptor] Already enabled, skipping')
+      if (DEBUG_INTERCEPTOR) console.log('[RenderedInterceptor] Already enabled, skipping')
     }
     return
   }
@@ -121,7 +121,7 @@ export function enableRenderedInterceptor(): void {
           cacheHitRequests++
 
           if (DEBUG_INTERCEPTOR) {
-            console.log(`[RenderedInterceptor] [fetch] Cache HIT: ${url}`)
+            if (DEBUG_INTERCEPTOR) console.log(`[RenderedInterceptor] [fetch] Cache HIT: ${url}`)
           }
 
           // 캐시된 데이터로 Response 생성
@@ -129,14 +129,14 @@ export function enableRenderedInterceptor(): void {
         }
       } catch (error) {
         // 캐시 조회 실패 시 원래 fetch로 폴백
-        console.warn('[RenderedInterceptor] Cache read failed, falling back to network:', error)
+        if (DEBUG_INTERCEPTOR) console.warn('[RenderedInterceptor] Cache read failed, falling back to network:', error)
       }
 
       // 캐시 미스: 원래 fetch 사용
       passedThroughRequests++
 
       if (DEBUG_INTERCEPTOR) {
-        console.log(`[RenderedInterceptor] [fetch] Cache MISS, fetching: ${url}`)
+        if (DEBUG_INTERCEPTOR) console.log(`[RenderedInterceptor] [fetch] Cache MISS, fetching: ${url}`)
       }
     }
 
@@ -163,7 +163,7 @@ export function enableRenderedInterceptor(): void {
     xhrUrlMap.set(this, urlString)
 
     if (DEBUG_INTERCEPTOR && isWadoRsRenderedRequest(urlString)) {
-      console.log(`[RenderedInterceptor] [XHR] open: ${urlString}`)
+      if (DEBUG_INTERCEPTOR) console.log(`[RenderedInterceptor] [XHR] open: ${urlString}`)
     }
 
     // 원본 open 호출
@@ -184,7 +184,7 @@ export function enableRenderedInterceptor(): void {
           cacheHitRequests++
 
           if (DEBUG_INTERCEPTOR) {
-            console.log(`[RenderedInterceptor] [XHR] Cache HIT: ${url}`)
+            if (DEBUG_INTERCEPTOR) console.log(`[RenderedInterceptor] [XHR] Cache HIT: ${url}`)
           }
 
           // XHR 응답 시뮬레이션
@@ -208,14 +208,14 @@ export function enableRenderedInterceptor(): void {
           return // 원본 send 호출 안함
         }
       } catch (error) {
-        console.warn('[RenderedInterceptor] [XHR] Cache read failed, falling back to network:', error)
+        if (DEBUG_INTERCEPTOR) console.warn('[RenderedInterceptor] [XHR] Cache read failed, falling back to network:', error)
       }
 
       // 캐시 미스
       passedThroughRequests++
 
       if (DEBUG_INTERCEPTOR) {
-        console.log(`[RenderedInterceptor] [XHR] Cache MISS, fetching: ${url}`)
+        if (DEBUG_INTERCEPTOR) console.log(`[RenderedInterceptor] [XHR] Cache MISS, fetching: ${url}`)
       }
     }
 
@@ -226,7 +226,7 @@ export function enableRenderedInterceptor(): void {
   isInterceptorEnabled = true
 
   if (DEBUG_INTERCEPTOR) {
-    console.log('[RenderedInterceptor] Enabled (fetch + XHR)')
+    if (DEBUG_INTERCEPTOR) console.log('[RenderedInterceptor] Enabled (fetch + XHR)')
   }
 }
 
@@ -238,7 +238,7 @@ export function enableRenderedInterceptor(): void {
 export function disableRenderedInterceptor(): void {
   if (!isInterceptorEnabled) {
     if (DEBUG_INTERCEPTOR) {
-      console.log('[RenderedInterceptor] Not enabled or already disabled')
+      if (DEBUG_INTERCEPTOR) console.log('[RenderedInterceptor] Not enabled or already disabled')
     }
     return
   }
@@ -262,7 +262,7 @@ export function disableRenderedInterceptor(): void {
   isInterceptorEnabled = false
 
   if (DEBUG_INTERCEPTOR) {
-    console.log('[RenderedInterceptor] Disabled')
+    if (DEBUG_INTERCEPTOR) console.log('[RenderedInterceptor] Disabled')
   }
 }
 

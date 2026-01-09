@@ -22,6 +22,9 @@ import { initCornerstone, isInitialized as isCornerstoneInitialized } from '@/li
 import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'
 import type { WadoRsBulkDataInstanceSummary, WadoRsBulkDataGridLayout } from '@/features/dicom-viewer-wado-rs-bulkdata'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_PAGE = false
+
 type InstanceFilter = 'all' | 'playable'
 
 const LAYOUT_OPTIONS: { value: WadoRsBulkDataGridLayout; label: string; slots: number }[] = [
@@ -108,14 +111,14 @@ export default function WadoRsViewerPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        console.log('[WadoRsViewerPage] Starting Cornerstone initialization...')
+        if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Starting Cornerstone initialization...')
         await initCornerstone()
 
-        console.log('[WadoRsViewerPage] initCornerstone completed, isCornerstoneInitialized:', isCornerstoneInitialized())
+        if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] initCornerstone completed, isCornerstoneInitialized:', isCornerstoneInitialized())
 
         // RenderingEngine이 이미 있으면 재사용
         if (renderingEngineRef.current) {
-          console.log('[WadoRsViewerPage] RenderingEngine already exists, reusing')
+          if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] RenderingEngine already exists, reusing')
           setIsInitialized(true)
           return
         }
@@ -154,9 +157,9 @@ export default function WadoRsViewerPage() {
         }
 
         setIsInitialized(true)
-        console.log('[WadoRsViewerPage] Cornerstone and RenderingEngine initialized')
+        if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Cornerstone and RenderingEngine initialized')
       } catch (error) {
-        console.error('[WadoRsViewerPage] Cornerstone initialization failed:', error)
+        if (DEBUG_PAGE) console.error('[WadoRsViewerPage] Cornerstone initialization failed:', error)
       }
     }
 
@@ -166,12 +169,12 @@ export default function WadoRsViewerPage() {
   // 클린업
   useEffect(() => {
     return () => {
-      console.log('[WadoRsViewerPage] Component unmounting - destroying RenderingEngine')
+      if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Component unmounting - destroying RenderingEngine')
       if (renderingEngineRef.current) {
         try {
           renderingEngineRef.current.destroy()
         } catch (e) {
-          console.warn('[WadoRsViewerPage] Error destroying RenderingEngine:', e)
+          if (DEBUG_PAGE) console.warn('[WadoRsViewerPage] Error destroying RenderingEngine:', e)
         }
         renderingEngineRef.current = null
       }
@@ -182,7 +185,7 @@ export default function WadoRsViewerPage() {
           cornerstoneTools.ToolGroupManager.destroyToolGroup(WADO_RS_BULKDATA_TOOL_GROUP_ID)
         }
       } catch (e) {
-        console.warn('[WadoRsViewerPage] Error destroying ToolGroup:', e)
+        if (DEBUG_PAGE) console.warn('[WadoRsViewerPage] Error destroying ToolGroup:', e)
       }
       clearAllSlots()
     }
@@ -191,7 +194,7 @@ export default function WadoRsViewerPage() {
   // ==================== 인스턴스 자동 슬롯 할당 ====================
 
   useEffect(() => {
-    console.log('[WadoRsViewerPage] Auto-assign effect check:', {
+    if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Auto-assign effect check:', {
       isInitialized,
       filteredInstancesLength: filteredInstances.length,
       studyInstanceUid: !!studyInstanceUid,
@@ -200,11 +203,11 @@ export default function WadoRsViewerPage() {
     })
 
     if (!isInitialized || !filteredInstances.length || !studyInstanceUid || !seriesInstanceUid) {
-      console.log('[WadoRsViewerPage] Auto-assign skipped - conditions not met')
+      if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Auto-assign skipped - conditions not met')
       return
     }
 
-    console.log('[WadoRsViewerPage] Auto-assigning instances to slots...')
+    if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Auto-assigning instances to slots...')
 
     setStoreLayout(layout)
 
@@ -219,7 +222,7 @@ export default function WadoRsViewerPage() {
       assignInstanceToSlot(index, instanceSummary)
     })
 
-    console.log('[WadoRsViewerPage] Auto-assign completed')
+    if (DEBUG_PAGE) if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Auto-assign completed')
   }, [isInitialized, filteredInstances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, layout, setStoreLayout])
 
   // ==================== 핸들러 ====================

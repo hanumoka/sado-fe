@@ -7,8 +7,8 @@
  * @see https://dicom.nema.org/medical/dicom/2019a/output/chtml/part18/sect_6.5.4.html
  */
 
-// 디버그 로그 플래그 (테스트 후 false로 변경)
-const DEBUG_PARSER = true
+// 디버그 로그 플래그
+const DEBUG_PARSER = false
 
 /**
  * Multipart/related 응답에서 파싱된 프레임 데이터

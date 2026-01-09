@@ -9,7 +9,9 @@
  * - WADO-RS BulkData: wadors:http://host/dicomweb/studies/.../frames/1
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
+import { API_BASE_URL } from '@/lib/config'
+
+const API_BASE = API_BASE_URL
 
 /**
  * WADO-RS BulkData imageId 생성

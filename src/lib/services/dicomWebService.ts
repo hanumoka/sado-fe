@@ -14,6 +14,9 @@
 import { getTenantId } from '../tenantStore'
 import { parseMultipartFrames, parseMultipartRenderedFrames, type ParsedFrame } from '../utils/multipartParser'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_SERVICE = false
+
 const DICOMWEB_BASE_URL = '/dicomweb'
 
 /**
@@ -453,14 +456,14 @@ export async function getRenderedFrame(
   frameNumber: number
 ): Promise<Blob> {
   const url = getRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
-  console.log('[dicomWebService] getRenderedFrame URL:', url)
+  if (DEBUG_SERVICE) console.log('[dicomWebService] getRenderedFrame URL:', url)
 
   try {
     const response = await fetch(url, {
       headers: getDicomWebHeaders('image/jpeg, image/png'),
     })
 
-    console.log('[dicomWebService] getRenderedFrame response:', {
+    if (DEBUG_SERVICE) console.log('[dicomWebService] getRenderedFrame response:', {
       status: response.status,
       statusText: response.statusText,
       contentType: response.headers.get('content-type'),
@@ -471,10 +474,10 @@ export async function getRenderedFrame(
     }
 
     const blob = await response.blob()
-    console.log('[dicomWebService] getRenderedFrame blob:', { size: blob.size, type: blob.type })
+    if (DEBUG_SERVICE) console.log('[dicomWebService] getRenderedFrame blob:', { size: blob.size, type: blob.type })
     return blob
   } catch (error) {
-    console.error('[dicomWebService] getRenderedFrame error:', error)
+    if (DEBUG_SERVICE) console.error('[dicomWebService] getRenderedFrame error:', error)
     throw error
   }
 }

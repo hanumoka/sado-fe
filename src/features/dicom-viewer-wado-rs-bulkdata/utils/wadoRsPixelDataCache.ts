@@ -12,8 +12,10 @@
  * - HTTP 요청을 캐시된 데이터로 대체하여 네트워크 최적화
  */
 
-// 디버그 로그 플래그 (테스트 후 false로 변경)
-const DEBUG_CACHE = true
+import { formatBytes } from '@/lib/utils'
+
+// 디버그 로그 플래그
+const DEBUG_CACHE = false
 
 // 캐시 저장소 (URL → ArrayBuffer)
 const pixelDataCache = new Map<string, ArrayBuffer>()
@@ -78,7 +80,7 @@ export function cachePixelData(url: string, data: ArrayBuffer): void {
   // 이미 캐시에 있으면 스킵
   if (pixelDataCache.has(normalizedKey)) {
     if (DEBUG_CACHE) {
-      console.log(`[PixelDataCache] Skip caching (already exists): ${normalizedKey}`)
+      if (DEBUG_CACHE) console.log(`[PixelDataCache] Skip caching (already exists): ${normalizedKey}`)
     }
     return
   }
@@ -118,7 +120,7 @@ export function getCachedPixelData(url: string): ArrayBuffer | undefined {
   if (data) {
     cacheHits++
     if (DEBUG_CACHE) {
-      console.log(`[PixelDataCache] Cache HIT: ${normalizedKey}`)
+      if (DEBUG_CACHE) console.log(`[PixelDataCache] Cache HIT: ${normalizedKey}`)
     }
 
     // LRU: 타임스탬프 업데이트
@@ -132,7 +134,7 @@ export function getCachedPixelData(url: string): ArrayBuffer | undefined {
 
   cacheMisses++
   if (DEBUG_CACHE) {
-    console.log(`[PixelDataCache] Cache MISS: ${normalizedKey}`)
+    if (DEBUG_CACHE) console.log(`[PixelDataCache] Cache MISS: ${normalizedKey}`)
   }
   return undefined
 }
@@ -160,7 +162,7 @@ export function clearPixelDataCache(): void {
   cacheMisses = 0
 
   if (DEBUG_CACHE) {
-    console.log('[PixelDataCache] Cache cleared')
+    if (DEBUG_CACHE) console.log('[PixelDataCache] Cache cleared')
   }
 }
 
@@ -195,7 +197,7 @@ export function clearInstanceCache(sopInstanceUid: string): void {
   }
 
   if (DEBUG_CACHE) {
-    console.log(`[PixelDataCache] Cleared ${urlsToDelete.length} frames for instance: ${sopInstanceUid}`)
+    if (DEBUG_CACHE) console.log(`[PixelDataCache] Cleared ${urlsToDelete.length} frames for instance: ${sopInstanceUid}`)
   }
 }
 
@@ -261,18 +263,7 @@ function enforceMemoryLimit(newDataSize: number): void {
   }
 
   if (DEBUG_CACHE && evictedCount > 0) {
-    console.log(`[PixelDataCache] Evicted ${evictedCount} entries to free memory`)
+    if (DEBUG_CACHE) console.log(`[PixelDataCache] Evicted ${evictedCount} entries to free memory`)
   }
 }
 
-/**
- * 바이트를 읽기 쉬운 형식으로 변환
- *
- * @param bytes 바이트 수
- * @returns 형식화된 문자열
- */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}

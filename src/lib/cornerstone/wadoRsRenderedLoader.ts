@@ -25,6 +25,19 @@ const imageMetadataCache = new Map<string, {
 // imageId → IImage 객체 캐시
 const imageCache = new Map<string, Types.IImage>()
 
+// 캐시 항목 메타데이터 (LRU 관리용)
+interface ImageCacheEntry {
+  imageId: string
+  size: number
+  timestamp: number
+}
+const imageCacheMetadata: ImageCacheEntry[] = []
+
+// 최대 캐시 크기 (200개 항목 또는 300MB)
+const MAX_IMAGE_CACHE_ENTRIES = 200
+const MAX_IMAGE_CACHE_BYTES = 300 * 1024 * 1024
+let currentImageCacheBytes = 0
+
 // 진행 중인 로드 요청 (중복 요청 방지)
 const pendingLoads = new Map<string, Promise<Types.IImage>>()
 
@@ -82,7 +95,7 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
         const ctx = canvas.getContext('2d')
 
         if (!ctx) {
-          console.error('[WadoRsRenderedLoader] blobToImageData - Failed to get 2d context')
+          if (DEBUG_LOADER) console.error('[WadoRsRenderedLoader] blobToImageData - Failed to get 2d context')
           cleanup()
           reject(new Error('Failed to get canvas 2d context'))
           return
@@ -94,14 +107,14 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
         cleanup()
         resolve(imageData)
       } catch (e) {
-        console.error('[WadoRsRenderedLoader] blobToImageData - Error in onload:', e)
+        if (DEBUG_LOADER) console.error('[WadoRsRenderedLoader] blobToImageData - Error in onload:', e)
         cleanup()
         reject(e)
       }
     }
 
     img.onerror = (e) => {
-      console.error('[WadoRsRenderedLoader] blobToImageData - img.onerror fired:', e)
+      if (DEBUG_LOADER) console.error('[WadoRsRenderedLoader] blobToImageData - img.onerror fired:', e)
       cleanup()
       reject(new Error('Failed to load image from blob'))
     }
@@ -111,6 +124,63 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
   })
 }
 
+
+/**
+ * LRU 방식으로 이미지 캐시에 추가
+ */
+function addToImageCache(imageId: string, image: Types.IImage): void {
+  // 이미 캐시에 있으면 스킵
+  if (imageCache.has(imageId)) {
+    return
+  }
+
+  const imageSize = (image as unknown as { sizeInBytes?: number }).sizeInBytes || 0
+
+  // 캐시 크기 제한 확인 및 필요시 오래된 항목 제거
+  enforceImageCacheLimit(imageSize)
+
+  // 캐시에 추가
+  imageCache.set(imageId, image)
+  currentImageCacheBytes += imageSize
+
+  imageCacheMetadata.push({
+    imageId,
+    size: imageSize,
+    timestamp: Date.now(),
+  })
+}
+
+/**
+ * 이미지 캐시 크기 제한 적용 (LRU 방식)
+ */
+function enforceImageCacheLimit(newImageSize: number): void {
+  // 항목 수 제한 확인
+  while (imageCache.size >= MAX_IMAGE_CACHE_ENTRIES && imageCacheMetadata.length > 0) {
+    evictOldestImage()
+  }
+
+  // 바이트 크기 제한 확인
+  while (currentImageCacheBytes + newImageSize > MAX_IMAGE_CACHE_BYTES && imageCacheMetadata.length > 0) {
+    evictOldestImage()
+  }
+}
+
+/**
+ * 가장 오래된 이미지 제거
+ */
+function evictOldestImage(): void {
+  // 타임스탬프 기준 오름차순 정렬 (오래된 것이 앞에)
+  imageCacheMetadata.sort((a, b) => a.timestamp - b.timestamp)
+
+  const oldest = imageCacheMetadata.shift()
+  if (oldest) {
+    imageCache.delete(oldest.imageId)
+    currentImageCacheBytes -= oldest.size
+    if (DEBUG_LOADER) {
+      console.log('[WadoRsRenderedLoader] Evicted oldest image:', oldest.imageId)
+    }
+  }
+}
 
 /**
  * WADO-RS Rendered API에서 이미지 로드 (캐시 지원)
@@ -138,8 +208,8 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
 
   try {
     const image = await loadPromise
-    // 캐시에 저장
-    imageCache.set(imageId, image)
+    // 캐시에 저장 (LRU 방식)
+    addToImageCache(imageId, image)
     if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Cached:', imageId, 'Total cached:', imageCache.size)
     return image
   } finally {
@@ -169,7 +239,7 @@ async function loadImageFromNetwork(imageId: string): Promise<Types.IImage> {
     )
     if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Blob received:', { size: blob.size, type: blob.type })
   } catch (error) {
-    console.error('[WadoRsRenderedLoader] getRenderedFrame FAILED:', error)
+    if (DEBUG_LOADER) console.error('[WadoRsRenderedLoader] getRenderedFrame FAILED:', error)
     throw error
   }
 
@@ -276,7 +346,7 @@ function loadImage(imageId: string) {
 
   // Promise 에러 핸들링 추가 (에러는 항상 로깅)
   promise.catch((error) => {
-    console.error('[WadoRsRenderedLoader] loadImageAsync failed:', error)
+    if (DEBUG_LOADER) console.error('[WadoRsRenderedLoader] loadImageAsync failed:', error)
   })
 
   return {
@@ -404,16 +474,27 @@ export function createWadoRsRenderedImageIds(
 export function clearImageCache(): void {
   const prevSize = imageCache.size
   imageCache.clear()
+  imageCacheMetadata.length = 0
+  currentImageCacheBytes = 0
   pendingLoads.clear()
-  console.log(`[WadoRsRenderedLoader] Image cache cleared (was ${prevSize} items)`)
+  if (DEBUG_LOADER) console.log(`[WadoRsRenderedLoader] Image cache cleared (was ${prevSize} items)`)
 }
 
 /**
  * 캐시 통계 반환
  */
-export function getImageCacheStats(): { size: number; pendingCount: number } {
+export function getImageCacheStats(): {
+  entries: number
+  bytes: number
+  maxEntries: number
+  maxBytes: number
+  pendingCount: number
+} {
   return {
-    size: imageCache.size,
+    entries: imageCache.size,
+    bytes: currentImageCacheBytes,
+    maxEntries: MAX_IMAGE_CACHE_ENTRIES,
+    maxBytes: MAX_IMAGE_CACHE_BYTES,
     pendingCount: pendingLoads.size,
   }
 }
@@ -423,14 +504,28 @@ export function getImageCacheStats(): { size: number; pendingCount: number } {
  */
 export function clearInstanceCache(sopInstanceUid: string): number {
   let cleared = 0
+  const keysToDelete: string[] = []
+
   for (const key of imageCache.keys()) {
     if (key.includes(sopInstanceUid)) {
-      imageCache.delete(key)
-      cleared++
+      keysToDelete.push(key)
     }
   }
+
+  for (const key of keysToDelete) {
+    imageCache.delete(key)
+    cleared++
+
+    // 메타데이터에서도 삭제
+    const metaIndex = imageCacheMetadata.findIndex((m) => m.imageId === key)
+    if (metaIndex !== -1) {
+      currentImageCacheBytes -= imageCacheMetadata[metaIndex].size
+      imageCacheMetadata.splice(metaIndex, 1)
+    }
+  }
+
   if (cleared > 0) {
-    console.log(`[WadoRsRenderedLoader] Cleared ${cleared} cached frames for instance: ${sopInstanceUid}`)
+    if (DEBUG_LOADER) console.log(`[WadoRsRenderedLoader] Cleared ${cleared} cached frames for instance: ${sopInstanceUid}`)
   }
   return cleared
 }

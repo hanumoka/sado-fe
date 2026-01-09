@@ -21,6 +21,9 @@ import { registerWadoRsBulkDataMetadataProvider } from '@/features/dicom-viewer-
 import { enableWadoRsFetchInterceptor } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsFetchInterceptor'
 import { enableRenderedInterceptor } from '@/features/dicom-viewer/utils/wadoRsRenderedInterceptor'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_INIT = false
+
 let initialized = false
 let initializingPromise: Promise<void> | null = null
 
@@ -32,47 +35,47 @@ let initializingPromise: Promise<void> | null = null
 export async function initCornerstone(): Promise<void> {
   // 이미 초기화 완료
   if (initialized) {
-    console.log('[Cornerstone] Already initialized')
+    if (DEBUG_INIT) console.log('[Cornerstone] Already initialized')
     return
   }
 
   // 초기화 진행 중이면 동일 Promise 반환 (중복 방지)
   if (initializingPromise) {
-    console.log('[Cornerstone] Initialization already in progress, waiting...')
+    if (DEBUG_INIT) console.log('[Cornerstone] Initialization already in progress, waiting...')
     return initializingPromise
   }
 
-  console.log('[Cornerstone] Initializing...')
+  if (DEBUG_INIT) console.log('[Cornerstone] Initializing...')
 
   initializingPromise = (async () => {
     try {
       // 1. Cornerstone Core 초기화 (CPU 렌더링 강제 - color 이미지 렌더링 문제 해결)
-      console.log('[Cornerstone] Step 1: Initializing core with CPU rendering...')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Initializing core with CPU rendering...')
       cornerstone.setUseCPURendering(true)
       await cornerstone.init()
-      console.log('[Cornerstone] Step 1: Core initialized (CPU rendering)')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Core initialized (CPU rendering)')
 
       // 1-1. WADO-RS Fetch Interceptors 활성화 (배치 API 최적화)
       // DICOM Image Loader 초기화 전에 활성화해야 함
-      console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Fetch Interceptors...')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Fetch Interceptors...')
       enableWadoRsFetchInterceptor()  // BulkData (PixelData) 인터셉터
       enableRenderedInterceptor()      // Rendered (PNG) 인터셉터
-      console.log('[Cornerstone] Step 1-1: WADO-RS Fetch Interceptors enabled (BulkData + Rendered)')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: WADO-RS Fetch Interceptors enabled (BulkData + Rendered)')
 
       // 2. DICOM Image Loader 초기화 (v4 API)
-      console.log('[Cornerstone] Step 2: Initializing DICOM image loader...')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 2: Initializing DICOM image loader...')
       try {
         dicomImageLoader.init({
           maxWebWorkers: navigator.hardwareConcurrency || 4,
         })
-        console.log('[Cornerstone] Step 2: DICOM image loader initialized')
+        if (DEBUG_INIT) console.log('[Cornerstone] Step 2: DICOM image loader initialized')
       } catch (e) {
         // Worker already registered 에러는 무시 (StrictMode 대응)
         console.warn('[Cornerstone] Step 2: DICOM image loader init warning:', e)
       }
 
       // 3. Image Loader 등록
-      console.log('[Cornerstone] Step 3: Registering image loaders...')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 3: Registering image loaders...')
       try {
         dicomImageLoader.wadouri.register()
         dicomImageLoader.wadors.register()
@@ -86,33 +89,33 @@ export async function initCornerstone(): Promise<void> {
       // 3-2. WADO-RS BulkData 메타데이터 프로바이더 등록 (wadors: scheme 지원)
       registerWadoRsBulkDataMetadataProvider()
 
-      console.log('[Cornerstone] Step 3: Image loaders registered')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 3: Image loaders registered')
 
       // 4. Cornerstone Tools 초기화
-      console.log('[Cornerstone] Step 4: Initializing tools...')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 4: Initializing tools...')
       try {
         await cornerstoneTools.init()
-        console.log('[Cornerstone] Step 4: Tools initialized')
+        if (DEBUG_INIT) console.log('[Cornerstone] Step 4: Tools initialized')
       } catch (e) {
         // Tools already initialized 에러는 무시
         console.warn('[Cornerstone] Step 4: Tools init warning:', e)
       }
 
       // 5. 기본 도구 추가
-      console.log('[Cornerstone] Step 5: Adding tools...')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 5: Adding tools...')
       try {
         cornerstoneTools.addTool(cornerstoneTools.WindowLevelTool)
         cornerstoneTools.addTool(cornerstoneTools.PanTool)
         cornerstoneTools.addTool(cornerstoneTools.ZoomTool)
         cornerstoneTools.addTool(cornerstoneTools.StackScrollTool)
-        console.log('[Cornerstone] Step 5: Tools added')
+        if (DEBUG_INIT) console.log('[Cornerstone] Step 5: Tools added')
       } catch (e) {
         // Tools already added 에러는 무시
         console.warn('[Cornerstone] Step 5: Add tools warning:', e)
       }
 
       initialized = true
-      console.log('[Cornerstone] ✅ Initialized successfully')
+      if (DEBUG_INIT) console.log('[Cornerstone] ✅ Initialized successfully')
     } catch (error) {
       console.error('[Cornerstone] ❌ Initialization failed:', error)
       initializingPromise = null

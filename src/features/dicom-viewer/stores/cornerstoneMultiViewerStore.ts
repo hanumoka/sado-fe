@@ -23,6 +23,9 @@ import { imageLoader } from '@cornerstonejs/core'
 import { createWadoRsRenderedImageId } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { prefetchAllRenderedFrames } from '../utils/wadoRsRenderedPrefetcher'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_STORE = false
+
 // ==================== 초기 상태 생성 ====================
 
 /**
@@ -318,7 +321,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         },
       }))
 
-      console.log(`[MultiViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'loadSlotInstance')
 
@@ -367,13 +370,13 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
     // 1. 프리로드가 완료되지 않았으면 먼저 프리로드
     if (!slot.isPreloaded && !slot.isPreloading) {
-      console.log(`[MultiViewer] Starting preload before play for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Starting preload before play for slot ${slotId}`)
       await get().preloadSlotFrames(slotId)
     }
 
     // 2. 프리로드 중이면 완료 대기
     if (get().slots[slotId]?.isPreloading) {
-      console.log(`[MultiViewer] Waiting for preload to complete for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Waiting for preload to complete for slot ${slotId}`)
       await waitForPreloadComplete(slotId, get)
     }
 
@@ -482,21 +485,21 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     }
 
     // 2. 순차 프리로드 (네트워크 포화 방지)
-    console.log(`[MultiViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) console.log(`[MultiViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
       // 이미 프리로드 완료된 슬롯은 스킵
       if (slot?.isPreloaded) {
-        console.log(`[MultiViewer] Slot ${slotId} already preloaded, skipping`)
+        if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} already preloaded, skipping`)
         continue
       }
       // 프리로드 진행 중인 슬롯은 완료 대기
       if (slot?.isPreloading) {
-        console.log(`[MultiViewer] Waiting for slot ${slotId} preload to complete`)
+        if (DEBUG_STORE) console.log(`[MultiViewer] Waiting for slot ${slotId} preload to complete`)
         await waitForPreloadComplete(slotId, get)
       } else {
         // 프리로드 시작 및 완료 대기
-        console.log(`[MultiViewer] Starting preload for slot ${slotId}`)
+        if (DEBUG_STORE) console.log(`[MultiViewer] Starting preload for slot ${slotId}`)
         await get().preloadSlotFrames(slotId)
       }
     }
@@ -520,7 +523,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       },
     }))
 
-    console.log(`[MultiViewer] playAll started for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) console.log(`[MultiViewer] playAll started for ${multiframeSlotIds.length} slots`)
   },
 
   pauseAll: () => {
@@ -610,7 +613,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     }
 
     if (slot.isPreloading || slot.isPreloaded) {
-      console.log(`[MultiViewer] Slot ${slotId} already preloading or preloaded`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} already preloading or preloaded`)
       return
     }
 
@@ -628,10 +631,10 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       const CORNERSTONE_BATCH_SIZE = getBatchSizeForLayout(get().layout)
       const PREFETCH_BATCH_SIZE = 10 // 배치 API 최적 크기
 
-      console.log(`[MultiViewer] 2-Phase preload for slot ${slotId}: ${numberOfFrames} frames`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] 2-Phase preload for slot ${slotId}: ${numberOfFrames} frames`)
 
       // ==================== Phase 1: 배치 API로 PNG 프리페치 (0-50%) ====================
-      console.log(`[MultiViewer] Phase 1: Batch API prefetch for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Phase 1: Batch API prefetch for slot ${slotId}`)
 
       await prefetchAllRenderedFrames(
         studyInstanceUid,
@@ -646,10 +649,10 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         }
       )
 
-      console.log(`[MultiViewer] Phase 1 complete: PNG data cached for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Phase 1 complete: PNG data cached for slot ${slotId}`)
 
       // ==================== Phase 2: Cornerstone 로드 (50-100%) ====================
-      console.log(`[MultiViewer] Phase 2: Cornerstone load for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Phase 2: Cornerstone load for slot ${slotId}`)
       let loadedCount = 0
 
       for (let i = 0; i < numberOfFrames; i += CORNERSTONE_BATCH_SIZE) {
@@ -684,7 +687,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       }
 
       get().finishSlotPreload(slotId)
-      console.log(`[MultiViewer] 2-Phase preload completed for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] 2-Phase preload completed for slot ${slotId}`)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)
@@ -910,7 +913,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       thumbnailsLoaded: new Set<string>(),
       allThumbnailsLoaded: count === 0, // 0개면 즉시 완료
     })
-    console.log(`[MultiViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
+    if (DEBUG_STORE) console.log(`[MultiViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
   },
 
   /**
@@ -933,7 +936,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     })
 
     if (allLoaded) {
-      console.log(`[MultiViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
+      if (DEBUG_STORE) console.log(`[MultiViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
     }
   },
 

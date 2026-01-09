@@ -187,7 +187,7 @@ function createImageFromPixelData(
   }
 
   if (DEBUG_BATCH_LOADER) {
-    console.log('[WadoRsBulkDataBatchLoader] IImage created:', {
+    if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log('[WadoRsBulkDataBatchLoader] IImage created:', {
       imageId,
       rows,
       columns,
@@ -227,7 +227,7 @@ function createCanvasFromPixelData(
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) {
-    console.error('[WadoRsBulkDataBatchLoader] Failed to get 2d context')
+    if (DEBUG_BATCH_LOADER) console.error('[WadoRsBulkDataBatchLoader] Failed to get 2d context')
     return canvas
   }
 
@@ -258,7 +258,7 @@ function createCanvasFromPixelData(
   ctx.putImageData(imageData, 0, 0)
 
   if (DEBUG_BATCH_LOADER) {
-    console.log('[WadoRsBulkDataBatchLoader] Canvas created:', columns, 'x', rows)
+    if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log('[WadoRsBulkDataBatchLoader] Canvas created:', columns, 'x', rows)
   }
 
   return canvas
@@ -289,7 +289,7 @@ export async function loadAndCacheFrameBatch(
   }
 
   if (DEBUG_BATCH_LOADER) {
-    console.log(
+    if (DEBUG_BATCH_LOADER) console.log(
       `[WadoRsBulkDataBatchLoader] Loading frames ${frameNumbers.join(',')} for ${sopInstanceUid}`
     )
   }
@@ -298,7 +298,7 @@ export async function loadAndCacheFrameBatch(
   const frameDataMap = await retrieveFrameBatch(studyUid, seriesUid, sopInstanceUid, frameNumbers)
 
   if (DEBUG_BATCH_LOADER) {
-    console.log(`[WadoRsBulkDataBatchLoader] Received ${frameDataMap.size} frames from API`)
+    if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log(`[WadoRsBulkDataBatchLoader] Received ${frameDataMap.size} frames from API`)
   }
 
   // 2. 각 프레임을 IImage로 변환하여 캐시에 저장
@@ -317,7 +317,7 @@ export async function loadAndCacheFrameBatch(
     const existingImage = cache.getImageLoadObject(imageId)
     if (existingImage) {
       if (DEBUG_BATCH_LOADER) {
-        console.log(`[WadoRsBulkDataBatchLoader] Skip caching (already exists): frame ${frameNumber}`)
+        if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log(`[WadoRsBulkDataBatchLoader] Skip caching (already exists): frame ${frameNumber}`)
       }
       cachedCount++ // 이미 캐시된 것도 카운트
       continue
@@ -335,12 +335,12 @@ export async function loadAndCacheFrameBatch(
     cachedCount++
 
     if (DEBUG_BATCH_LOADER) {
-      console.log(`[WadoRsBulkDataBatchLoader] Cached frame ${frameNumber} as ${imageId}`)
+      if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log(`[WadoRsBulkDataBatchLoader] Cached frame ${frameNumber} as ${imageId}`)
     }
   }
 
   if (DEBUG_BATCH_LOADER) {
-    console.log(
+    if (DEBUG_BATCH_LOADER) console.log(
       `[WadoRsBulkDataBatchLoader] Batch complete: ${cachedCount} frames cached for ${sopInstanceUid}`
     )
   }

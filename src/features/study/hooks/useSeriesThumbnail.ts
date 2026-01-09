@@ -20,6 +20,7 @@ import {
   isInitialized,
   cornerstone,
 } from '@/lib/cornerstone'
+import { API_BASE_URL } from '@/lib/config'
 
 /**
  * Series 썸네일 Hook
@@ -73,8 +74,7 @@ export function useSeriesThumbnail(
           firstInstance.sopInstanceUid
         )
 
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
-        const imageId = `wadouri:${API_BASE}${wadoUrl}`
+        const imageId = `wadouri:${API_BASE_URL}${wadoUrl}`
 
         // Cornerstone으로 이미지 로드
         const image = await cornerstone.imageLoader.loadImage(imageId)

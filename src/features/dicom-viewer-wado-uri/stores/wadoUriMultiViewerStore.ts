@@ -20,6 +20,9 @@ import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoUriImageId } from '../utils/wadoUriImageIdHelper'
 import { loadWadoUriImage } from '../utils/wadoUriImageLoader'
 
+// 디버그 로그 플래그 (프로덕션에서는 false)
+const DEBUG_STORE = false
+
 // ==================== 초기 상태 생성 ====================
 
 /**
@@ -169,7 +172,7 @@ async function waitForPreloadComplete(
       }
 
       if (Date.now() - startTime > timeout) {
-        console.warn(`[WadoUriViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
+        if (DEBUG_STORE) console.warn(`[WadoUriViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
         resolve()
         return
       }
@@ -228,7 +231,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
   assignInstanceToSlot: (slotId, instance) => {
     const maxSlots = getMaxSlots(get().layout)
     if (slotId < 0 || slotId >= maxSlots) {
-      console.warn(`[WadoUriViewer] Invalid slot ID: ${slotId}`)
+      if (DEBUG_STORE) console.warn(`[WadoUriViewer] Invalid slot ID: ${slotId}`)
       return
     }
 
@@ -290,7 +293,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
         },
       }))
 
-      console.log(`[WadoUriViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'loadSlotInstance')
 
@@ -327,17 +330,17 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
   playSlot: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot?.instance || slot.instance.numberOfFrames <= 1) {
-      console.warn(`[WadoUriViewer] Cannot play slot ${slotId}: no multiframe instance`)
+      if (DEBUG_STORE) console.warn(`[WadoUriViewer] Cannot play slot ${slotId}: no multiframe instance`)
       return
     }
 
     if (!slot.isPreloaded && !slot.isPreloading) {
-      console.log(`[WadoUriViewer] Starting preload before play for slot ${slotId}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Starting preload before play for slot ${slotId}`)
       await get().preloadSlotFrames(slotId)
     }
 
     if (get().slots[slotId]?.isPreloading) {
-      console.log(`[WadoUriViewer] Waiting for preload to complete for slot ${slotId}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Waiting for preload to complete for slot ${slotId}`)
       await waitForPreloadComplete(slotId, get)
     }
 
@@ -438,22 +441,22 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
     }
 
     if (multiframeSlotIds.length === 0) {
-      console.warn('[WadoUriViewer] No multiframe slots to play')
+      if (DEBUG_STORE) console.warn('[WadoUriViewer] No multiframe slots to play')
       return
     }
 
-    console.log(`[WadoUriViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
       if (slot?.isPreloaded) {
-        console.log(`[WadoUriViewer] Slot ${slotId} already preloaded, skipping`)
+        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Slot ${slotId} already preloaded, skipping`)
         continue
       }
       if (slot?.isPreloading) {
-        console.log(`[WadoUriViewer] Waiting for slot ${slotId} preload to complete`)
+        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Waiting for slot ${slotId} preload to complete`)
         await waitForPreloadComplete(slotId, get)
       } else {
-        console.log(`[WadoUriViewer] Starting preload for slot ${slotId}`)
+        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Starting preload for slot ${slotId}`)
         await get().preloadSlotFrames(slotId)
       }
     }
@@ -476,7 +479,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
       },
     }))
 
-    console.log(`[WadoUriViewer] playAll started for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] playAll started for ${multiframeSlotIds.length} slots`)
   },
 
   pauseAll: () => {
@@ -546,12 +549,12 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
   preloadSlotFrames: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot?.instance) {
-      console.warn(`[WadoUriViewer] Cannot preload slot ${slotId}: no instance`)
+      if (DEBUG_STORE) console.warn(`[WadoUriViewer] Cannot preload slot ${slotId}: no instance`)
       return
     }
 
     if (slot.isPreloading || slot.isPreloaded) {
-      console.log(`[WadoUriViewer] Slot ${slotId} already preloading or preloaded`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Slot ${slotId} already preloading or preloaded`)
       return
     }
 
@@ -569,7 +572,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
       const BATCH_SIZE = getBatchSizeForLayout(get().layout)
 
       // WADO-URI imageLoader 사용 (cornerstoneWADOImageLoader)
-      console.log(`[WadoUriViewer] Preloading slot ${slotId} with WADO-URI imageLoader (${numberOfFrames} frames, BATCH_SIZE=${BATCH_SIZE})`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Preloading slot ${slotId} with WADO-URI imageLoader (${numberOfFrames} frames, BATCH_SIZE=${BATCH_SIZE})`)
 
       for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
         const batch = []
@@ -590,7 +593,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
                 get().updateSlotPreloadProgress(slotId, progress)
               })
               .catch((error: unknown) => {
-                console.warn(`[WadoUriViewer] Failed to preload frame ${j} for slot ${slotId}:`, error)
+                if (DEBUG_STORE) console.warn(`[WadoUriViewer] Failed to preload frame ${j} for slot ${slotId}:`, error)
                 loadedCount++
                 const progress = Math.round((loadedCount / numberOfFrames) * 100)
                 get().updateSlotPreloadProgress(slotId, progress)
@@ -602,7 +605,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
       }
 
       get().finishSlotPreload(slotId)
-      console.log(`[WadoUriViewer] Preload completed for slot ${slotId}`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Preload completed for slot ${slotId}`)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)
@@ -807,7 +810,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
       thumbnailsLoaded: new Set<string>(),
       allThumbnailsLoaded: count === 0,
     })
-    console.log(`[WadoUriViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
+    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] Thumbnail tracking started: expecting ${count} thumbnails`)
   },
 
   markThumbnailLoaded: (sopInstanceUid) => {
@@ -826,7 +829,7 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
     })
 
     if (allLoaded) {
-      console.log(`[WadoUriViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
+      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoUriViewer] All thumbnails loaded (${newSet.size}/${totalThumbnailCount}), preloading can start`)
     }
   },
 

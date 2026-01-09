@@ -64,6 +64,20 @@ export interface WadoRsBulkDataSlotState {
   performanceStats: WadoRsBulkDataSlotPerformanceStats
 }
 
+// ==================== 프리로드 성능 ====================
+
+/** 프리로드 성능 측정 결과 */
+export interface WadoRsBulkDataPreloadPerformance {
+  /** 총 로딩 시간 (ms) */
+  loadTimeMs: number
+  /** HTTP 요청 수 */
+  requestCount: number
+  /** 로드된 프레임 수 */
+  framesLoaded: number
+  /** 배치당 평균 시간 */
+  avgTimePerBatch: number
+}
+
 // ==================== Store 상태 ====================
 
 /** WADO-RS BulkData Multi Viewer 전체 상태 */
@@ -82,6 +96,12 @@ export interface WadoRsBulkDataMultiViewerState {
   totalThumbnailCount: number
   /** 모든 썸네일 로딩 완료 여부 */
   allThumbnailsLoaded: boolean
+  /** 배치 사이즈 (프리로드 시 사용) */
+  batchSize: number
+  /** 프리로드 성능 측정 결과 */
+  preloadPerformance: WadoRsBulkDataPreloadPerformance | null
+  /** 리로딩 중 여부 */
+  isReloading: boolean
 }
 
 // ==================== 드래그 앤 드롭 ====================

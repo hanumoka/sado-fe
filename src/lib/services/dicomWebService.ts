@@ -12,6 +12,7 @@
  */
 
 import { getTenantId } from '../tenantStore'
+import { parseMultipartFrames, parseMultipartRenderedFrames, type ParsedFrame } from '../utils/multipartParser'
 
 const DICOMWEB_BASE_URL = '/dicomweb'
 
@@ -589,6 +590,147 @@ export interface StoreInstanceOptions {
  *   onProgress: (progress) => console.log(`${progress}%`)
  * })
  */
+// ============================================================
+// WADO-RS: Batch Frame Retrieval (DICOMweb FrameList)
+// ============================================================
+
+/**
+ * WADO-RS: 다중 프레임 URL 생성 (DICOMweb FrameList 표준)
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @returns FrameList URL (예: /frames/1,2,3,4,5)
+ */
+export function getFrameListUrl(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumbers: number[]
+): string {
+  const frameList = frameNumbers.join(',')
+  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}`
+}
+
+/**
+ * WADO-RS: 다중 프레임 배치 조회 (DICOMweb FrameList 표준)
+ *
+ * 단일 HTTP 요청으로 여러 프레임의 PixelData를 조회합니다.
+ * 서버에서 DICOM 파일을 1회만 로드하여 I/O 90% 절감.
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @returns Map<프레임번호, ArrayBuffer>
+ *
+ * @example
+ * // 프레임 1-10 배치 조회
+ * const frames = await retrieveFrameBatch(studyUid, seriesUid, sopInstanceUid, [1,2,3,4,5,6,7,8,9,10])
+ * const frame5Data = frames.get(5) // ArrayBuffer
+ */
+export async function retrieveFrameBatch(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumbers: number[]
+): Promise<Map<number, ArrayBuffer>> {
+  if (frameNumbers.length === 0) {
+    return new Map()
+  }
+
+  // 단일 프레임은 기존 API 사용 (최적화)
+  if (frameNumbers.length === 1) {
+    const data = await retrieveFrame(studyUid, seriesUid, sopInstanceUid, frameNumbers[0])
+    const result = new Map<number, ArrayBuffer>()
+    result.set(frameNumbers[0], data)
+    return result
+  }
+
+  const url = getFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers)
+
+  const response = await fetch(url, {
+    headers: getDicomWebHeaders('multipart/related; type="application/octet-stream"'),
+  })
+
+  if (!response.ok) {
+    throw new Error(`WADO-RS retrieveFrameBatch failed: ${response.status}`)
+  }
+
+  // Multipart 응답 파싱
+  return parseMultipartFrames(response)
+}
+
+/**
+ * WADO-RS Rendered: 다중 프레임 URL 생성 (DICOMweb FrameList 표준)
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @returns FrameList Rendered URL (예: /frames/1,2,3,4,5/rendered)
+ */
+export function getRenderedFrameListUrl(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumbers: number[]
+): string {
+  const frameList = frameNumbers.join(',')
+  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}/rendered`
+}
+
+/**
+ * WADO-RS Rendered: 다중 프레임 배치 조회 (DICOMweb FrameList 표준)
+ *
+ * 단일 HTTP 요청으로 여러 프레임의 렌더링된 PNG를 조회합니다.
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @returns ParsedFrame 배열 (프레임 번호로 정렬됨)
+ */
+export async function retrieveRenderedFrameBatch(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumbers: number[]
+): Promise<ParsedFrame[]> {
+  if (frameNumbers.length === 0) {
+    return []
+  }
+
+  // 단일 프레임은 기존 API 사용 (최적화)
+  if (frameNumbers.length === 1) {
+    const blob = await getRenderedFrame(studyUid, seriesUid, sopInstanceUid, frameNumbers[0])
+    const data = await blob.arrayBuffer()
+    return [{
+      frameNumber: frameNumbers[0],
+      data,
+      contentType: 'image/png',
+    }]
+  }
+
+  const url = getRenderedFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers)
+
+  const response = await fetch(url, {
+    headers: getDicomWebHeaders('multipart/related; type="image/png"'),
+  })
+
+  if (!response.ok) {
+    throw new Error(`WADO-RS retrieveRenderedFrameBatch failed: ${response.status}`)
+  }
+
+  // Multipart PNG 응답 파싱
+  return parseMultipartRenderedFrames(response)
+}
+
+// ============================================================
+// STOW-RS: Store Services
+// ============================================================
+
 export async function storeInstance(
   file: File,
   options?: StoreInstanceOptions

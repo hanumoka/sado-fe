@@ -19,7 +19,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
 /**
  * DICOM 픽셀 메타데이터
  */
-interface DicomPixelMetadata {
+export interface DicomPixelMetadata {
   rows: number
   columns: number
   samplesPerPixel: number

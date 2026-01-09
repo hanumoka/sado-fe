@@ -16,6 +16,7 @@ import {
   useWadoRsBulkDataMultiViewerStore,
   WadoRsBulkDataSlot,
   WADO_RS_BULKDATA_TOOL_GROUP_ID,
+  BatchSizeTestPanel,
 } from '@/features/dicom-viewer-wado-rs-bulkdata'
 import { initCornerstone, isInitialized as isCornerstoneInitialized } from '@/lib/cornerstone/initCornerstone'
 import { getRenderedFrameUrl } from '@/lib/services/dicomWebService'
@@ -483,51 +484,58 @@ export default function WadoRsViewerPage() {
 
       {/* ==================== Footer: Global Playback Controller ==================== */}
       <footer className="bg-gray-800 text-white p-4 border-t border-gray-700">
-        <div className="flex items-center justify-center gap-4">
-          {/* 전체 재생 */}
-          <button
-            onClick={playAll}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition-colors"
-          >
-            <Play className="h-4 w-4" />
-            <span className="text-sm font-medium">Play All</span>
-          </button>
+        <div className="flex items-center justify-between">
+          {/* 왼쪽: 재생 컨트롤 */}
+          <div className="flex items-center gap-4">
+            {/* 전체 재생 */}
+            <button
+              onClick={playAll}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition-colors"
+            >
+              <Play className="h-4 w-4" />
+              <span className="text-sm font-medium">Play All</span>
+            </button>
 
-          {/* 전체 일시정지 */}
-          <button
-            onClick={pauseAll}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded transition-colors"
-          >
-            <Pause className="h-4 w-4" />
-            <span className="text-sm font-medium">Pause All</span>
-          </button>
+            {/* 전체 일시정지 */}
+            <button
+              onClick={pauseAll}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded transition-colors"
+            >
+              <Pause className="h-4 w-4" />
+              <span className="text-sm font-medium">Pause All</span>
+            </button>
 
-          {/* 전체 정지 */}
-          <button
-            onClick={stopAll}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
-          >
-            <Square className="h-4 w-4" />
-            <span className="text-sm font-medium">Stop All</span>
-          </button>
+            {/* 전체 정지 */}
+            <button
+              onClick={stopAll}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
+            >
+              <Square className="h-4 w-4" />
+              <span className="text-sm font-medium">Stop All</span>
+            </button>
 
-          {/* 구분선 */}
-          <div className="h-8 w-px bg-gray-600" />
+            {/* 구분선 */}
+            <div className="h-8 w-px bg-gray-600" />
 
-          {/* FPS 선택 */}
-          <select
-            value={globalFps}
-            onChange={(e) => setGlobalFps(Number(e.target.value))}
-            className="bg-gray-700 text-white px-3 py-2 rounded border border-gray-600"
-          >
-            <option value={15}>15 FPS</option>
-            <option value={30}>30 FPS</option>
-            <option value={60}>60 FPS</option>
-          </select>
+            {/* FPS 선택 */}
+            <select
+              value={globalFps}
+              onChange={(e) => setGlobalFps(Number(e.target.value))}
+              className="bg-gray-700 text-white px-3 py-2 rounded border border-gray-600"
+            >
+              <option value={15}>15 FPS</option>
+              <option value={30}>30 FPS</option>
+              <option value={60}>60 FPS</option>
+            </select>
+          </div>
 
-          {/* WADO-RS 표시 */}
-          <div className="text-cyan-400 text-sm">
-            WADO-RS Mode
+          {/* 오른쪽: 배치 테스트 패널 */}
+          <div className="flex items-center gap-4">
+            <BatchSizeTestPanel />
+            {/* WADO-RS 표시 */}
+            <div className="text-cyan-400 text-sm">
+              WADO-RS Mode
+            </div>
           </div>
         </div>
       </footer>

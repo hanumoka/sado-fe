@@ -18,6 +18,7 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
 import { registerWadoRsBulkDataMetadataProvider } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsBulkDataMetadataProvider'
+import { enableWadoRsFetchInterceptor } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsFetchInterceptor'
 
 let initialized = false
 let initializingPromise: Promise<void> | null = null
@@ -49,6 +50,12 @@ export async function initCornerstone(): Promise<void> {
       cornerstone.setUseCPURendering(true)
       await cornerstone.init()
       console.log('[Cornerstone] Step 1: Core initialized (CPU rendering)')
+
+      // 1-1. WADO-RS Fetch Interceptor 활성화 (배치 API 최적화)
+      // DICOM Image Loader 초기화 전에 활성화해야 함
+      console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Fetch Interceptor...')
+      enableWadoRsFetchInterceptor()
+      console.log('[Cornerstone] Step 1-1: WADO-RS Fetch Interceptor enabled')
 
       // 2. DICOM Image Loader 초기화 (v4 API)
       console.log('[Cornerstone] Step 2: Initializing DICOM image loader...')

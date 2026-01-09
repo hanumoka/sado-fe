@@ -171,7 +171,7 @@ async function fetchMetadataFromBackend(
 
   // 캐시에 저장
   metadataCache.set(sopInstanceUid, metadata)
-  console.log(`[wadoRsBulkData] Metadata cached for ${sopInstanceUid}:`, metadata)
+  console.log(`[WadoRsBulkDataMetadataProvider] Metadata cached for ${sopInstanceUid}:`, metadata)
 
   return metadata
 }
@@ -200,7 +200,7 @@ function wadoRsBulkDataMetadataProvider(type: string, imageId: string): unknown 
   if (!cached) {
     // 메타데이터가 아직 캐시되지 않음 - 이미지 로드 전에 fetchAndCacheMetadata가 호출되어야 함
     console.warn(
-      `[wadoRsBulkData] Metadata not cached for ${parsed.sopInstanceUid}. ` +
+      `[WadoRsBulkDataMetadataProvider] Metadata not cached for ${parsed.sopInstanceUid}. ` +
         'Call fetchAndCacheMetadata before loading images.'
     )
     return undefined
@@ -269,7 +269,7 @@ function wadoRsBulkDataMetadataProvider(type: string, imageId: string): unknown 
 export function registerWadoRsBulkDataMetadataProvider(): void {
   // 높은 우선순위로 등록 (다른 프로바이더보다 먼저 호출됨)
   metaData.addProvider(wadoRsBulkDataMetadataProvider, 10000)
-  console.log('[wadoRsBulkData] Metadata provider registered')
+  console.log('[WadoRsBulkDataMetadataProvider] Metadata provider registered')
 }
 
 /**
@@ -281,7 +281,7 @@ export function clearMetadataCache(): void {
   const prevSize = metadataCache.size
   metadataCache.clear()
   pendingFetches.clear()
-  console.log(`[wadoRsBulkData] Metadata cache cleared (was ${prevSize} items)`)
+  console.log(`[WadoRsBulkDataMetadataProvider] Metadata cache cleared (was ${prevSize} items)`)
 }
 
 /**

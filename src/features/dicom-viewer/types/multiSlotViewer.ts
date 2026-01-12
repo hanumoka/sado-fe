@@ -65,6 +65,12 @@ export interface CornerstoneSlotState {
   error: string | null
   /** 성능 통계 */
   performanceStats: SlotPerformanceStats
+
+  // Progressive Playback 지원 필드
+  /** 로드 완료된 프레임 번호 Set (0-based) */
+  loadedFrames: Set<number>
+  /** 버퍼링 중 여부 (재생 일시 중단) */
+  isBuffering: boolean
 }
 
 // ==================== Store 상태 ====================

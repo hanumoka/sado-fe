@@ -60,6 +60,14 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     (state) => state.slots[slotId]?.error ?? null
   )
 
+  // Progressive Playback 필드
+  const isBuffering = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.isBuffering ?? false
+  )
+  const loadedFrameCount = useCornerstoneMultiViewerStore(
+    (state) => state.getLoadedFrameCount(slotId)
+  )
+
   // 객체 타입 필드 (shallow 비교로 불필요한 리렌더링 방지)
   const instance = useCornerstoneMultiViewerStore(
     useShallow((state) => state.slots[slotId]?.instance ?? null)
@@ -440,6 +448,8 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
           isPreloading={isPreloading}
           isPreloaded={isPreloaded}
           isPlaying={isPlaying}
+          isBuffering={isBuffering}
+          loadedFrameCount={loadedFrameCount}
         />
       </div>
     </div>

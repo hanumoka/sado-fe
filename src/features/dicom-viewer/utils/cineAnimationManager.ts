@@ -98,6 +98,7 @@ class CineAnimationManager {
   /**
    * 중앙 애니메이션 루프
    * Phase 2: Zustand 상태 업데이트 없이 Viewport 직접 조작
+   * + Progressive Playback: 버퍼 확인 및 버퍼링 상태 관리
    */
   private animate = (currentTime: number): void => {
     if (this.activeSlots.size === 0) {
@@ -111,6 +112,8 @@ class CineAnimationManager {
       // 드리프트 보정: 초과된 시간을 다음 프레임에 반영
       this.lastFrameTime = currentTime - (elapsed % this.frameTime)
 
+      const store = useCornerstoneMultiViewerStore.getState()
+
       // Phase 2: Viewport 직접 업데이트 (React 우회)
       this.activeSlots.forEach((slotId) => {
         const info = this.viewports.get(slotId)
@@ -121,6 +124,21 @@ class CineAnimationManager {
 
         const { viewport, totalFrames } = info
         const nextIndex = (info.currentIndex + 1) % totalFrames
+
+        // Progressive Playback: 다음 프레임이 로드되었는지 확인
+        const isNextFrameLoaded = store.isFrameLoaded(slotId, nextIndex)
+
+        if (!isNextFrameLoaded) {
+          // 버퍼링 상태로 전환 (이 슬롯은 스킵)
+          if (DEBUG_CINE) {
+            console.log(`[CineManager] Buffering slot ${slotId}: frame ${nextIndex} not loaded`)
+          }
+          store.setBuffering(slotId, true)
+          return // 이 슬롯은 스킵, 다음 프레임에서 다시 시도
+        }
+
+        // 버퍼링 해제 (정상 재생)
+        store.setBuffering(slotId, false)
 
         // 프레임 인덱스 업데이트 (내부 상태)
         info.currentIndex = nextIndex

@@ -551,6 +551,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     const { slots, layout } = get()
     const maxSlots = getMaxSlots(layout)
 
+    // 1. 멀티프레임 슬롯 ID 수집
     const multiframeSlotIds: number[] = []
     for (let i = 0; i < maxSlots; i++) {
       const slot = slots[i]
@@ -564,41 +565,48 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
-    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
+    // 2. 모든 슬롯 프리로드 병렬 시작 (백그라운드)
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting parallel preload for ${multiframeSlotIds.length} slots`)
+
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
-      if (slot?.isPreloaded) {
-        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloaded, skipping`)
+      // 이미 완료되었거나 진행 중이면 스킵
+      if (slot?.isPreloaded || slot?.isPreloading) {
+        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloaded/preloading, skipping`)
         continue
       }
-      if (slot?.isPreloading) {
-        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Waiting for slot ${slotId} preload to complete`)
+
+      // 백그라운드 프리로드 시작 (await 없음!)
+      get().preloadSlotFrames(slotId).catch((error) => {
+        console.warn(`[WadoRsBulkDataViewer] Background preload failed for slot ${slotId}:`, error)
+      })
+    }
+
+    // 3. 모든 슬롯 프리로드 완료 대기 (병렬)
+    await Promise.all(
+      multiframeSlotIds.map(async (slotId) => {
+        const slot = get().slots[slotId]
+        if (slot?.isPreloaded) return
+
+        // 프리로드 완료 대기
         await waitForPreloadComplete(slotId, get)
-      } else {
-        if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload for slot ${slotId}`)
-        await get().preloadSlotFrames(slotId)
-      }
-    }
 
-    const updatedSlots: Record<number, WadoRsBulkDataSlotState> = {}
-    for (const slotId of multiframeSlotIds) {
-      const slot = get().slots[slotId]
-      if (slot) {
-        updatedSlots[slotId] = {
-          ...slot,
-          isPlaying: true,
-        }
-      }
-    }
+        // 해당 슬롯 즉시 재생 시작
+        set((state) => ({
+          slots: {
+            ...state.slots,
+            [slotId]: {
+              ...state.slots[slotId],
+              isPlaying: true,
+            },
+          },
+        }))
 
-    set((state) => ({
-      slots: {
-        ...state.slots,
-        ...updatedSlots,
-      },
-    }))
+        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} started playing`)
+      })
+    )
 
-    if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] playAll started for ${multiframeSlotIds.length} slots`)
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] playAll completed for ${multiframeSlotIds.length} slots`)
   },
 
   pauseAll: () => {

@@ -59,6 +59,7 @@ function buildRenderedFrameUrl(
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumbers 프레임 번호 배열 (1-based)
  * @param onProgress 진행 콜백 (loaded, total)
+ * @param onFrameLoaded 개별 프레임 로드 콜백 (frameNumber: 0-based)
  * @returns 캐시된 프레임 수
  */
 export async function prefetchRenderedFrameBatch(
@@ -66,7 +67,8 @@ export async function prefetchRenderedFrameBatch(
   seriesUid: string,
   sopInstanceUid: string,
   frameNumbers: number[],
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  onFrameLoaded?: (frameNumber: number) => void
 ): Promise<number> {
   if (frameNumbers.length === 0) {
     return 0
@@ -119,6 +121,8 @@ export async function prefetchRenderedFrameBatch(
       totalBytesPrefetched += frame.data.byteLength
 
       onProgress?.(cached, frameNumbers.length)
+      // 개별 프레임 로드 즉시 콜백 (0-based로 변환)
+      onFrameLoaded?.(frame.frameNumber - 1)
     }
 
     if (DEBUG_PREFETCHER) {
@@ -135,9 +139,10 @@ export async function prefetchRenderedFrameBatch(
 }
 
 /**
- * 전체 인스턴스 Rendered 프레임 프리페치
+ * 전체 인스턴스 Rendered 프레임 프리페치 (병렬 배치 처리)
  *
  * 지정된 배치 크기로 나누어 모든 프레임을 프리페치.
+ * 병렬 배치 처리로 네트워크 활용도를 높임.
  *
  * @param studyUid Study Instance UID
  * @param seriesUid Series Instance UID
@@ -145,6 +150,7 @@ export async function prefetchRenderedFrameBatch(
  * @param totalFrames 총 프레임 수
  * @param batchSize 배치 크기 (기본값: 10)
  * @param onProgress 진행 콜백 (loaded, total)
+ * @param onFrameLoaded 개별 프레임 로드 콜백 (frameNumber: 0-based)
  * @returns 캐시된 총 프레임 수
  */
 export async function prefetchAllRenderedFrames(
@@ -153,42 +159,79 @@ export async function prefetchAllRenderedFrames(
   sopInstanceUid: string,
   totalFrames: number,
   batchSize: number = 10,
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  onFrameLoaded?: (frameNumber: number) => void
 ): Promise<number> {
   if (totalFrames <= 0) {
     return 0
   }
 
+  // 동시 요청 배치 수 (네트워크 활용도 ↑, 서버 부하 고려)
+  const CONCURRENT_BATCHES = 3
+
   if (DEBUG_PREFETCHER) {
-    if (DEBUG_PREFETCHER) console.log(
-      `[RenderedPrefetcher] Starting prefetch of ${totalFrames} frames in batches of ${batchSize}`
+    console.log(
+      `[RenderedPrefetcher] Starting prefetch of ${totalFrames} frames in batches of ${batchSize}, concurrent: ${CONCURRENT_BATCHES}`
     )
   }
 
-  let totalCached = 0
-
+  // 1. 모든 배치 생성
+  const allBatches: number[][] = []
   for (let i = 0; i < totalFrames; i += batchSize) {
-    const frameNumbers: number[] = []
+    const frames: number[] = []
     for (let j = i; j < Math.min(i + batchSize, totalFrames); j++) {
-      frameNumbers.push(j + 1) // 1-based
+      frames.push(j + 1) // 1-based for API
     }
-
-    const cached = await prefetchRenderedFrameBatch(
-      studyUid,
-      seriesUid,
-      sopInstanceUid,
-      frameNumbers,
-      (loaded, _total) => {
-        const overallLoaded = i + loaded
-        onProgress?.(overallLoaded, totalFrames)
-      }
-    )
-
-    totalCached = i + cached
+    allBatches.push(frames)
   }
 
   if (DEBUG_PREFETCHER) {
-    if (DEBUG_PREFETCHER) if (DEBUG_PREFETCHER) console.log(`[RenderedPrefetcher] Prefetch complete: ${totalCached}/${totalFrames} frames`)
+    console.log(`[RenderedPrefetcher] Created ${allBatches.length} batches`)
+  }
+
+  // 2. N개 배치씩 병렬 처리
+  let totalCached = 0
+  // 공유 카운터로 진행률 정확하게 추적 (병렬 처리 중에도 정확)
+  let globalLoadedCount = 0
+
+  for (let i = 0; i < allBatches.length; i += CONCURRENT_BATCHES) {
+    const concurrentBatches = allBatches.slice(i, i + CONCURRENT_BATCHES)
+
+    // 병렬 요청 - Promise.allSettled로 부분 실패 허용
+    const results = await Promise.allSettled(
+      concurrentBatches.map((frames) =>
+        prefetchRenderedFrameBatch(
+          studyUid,
+          seriesUid,
+          sopInstanceUid,
+          frames,
+          () => {
+            // 진행률 업데이트: 배치 내부 진행은 무시
+          },
+          // 개별 프레임 로드 콜백 - 각 프레임 캐시 시 즉시 호출됨
+          onFrameLoaded
+        ).then((cached) => {
+          // 공유 카운터 업데이트 후 진행률 보고
+          globalLoadedCount += cached
+          onProgress?.(Math.min(globalLoadedCount, totalFrames), totalFrames)
+          return cached
+        })
+      )
+    )
+
+    // 결과 집계 - Promise.allSettled 결과 처리
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        totalCached += result.value
+      } else {
+        // 실패한 배치 로그
+        console.warn('[RenderedPrefetcher] Batch failed:', result.reason)
+      }
+    }
+  }
+
+  if (DEBUG_PREFETCHER) {
+    console.log(`[RenderedPrefetcher] Prefetch complete: ${totalCached}/${totalFrames} frames`)
   }
 
   return totalCached

@@ -56,6 +56,9 @@ function createEmptySlotState(): CornerstoneSlotState {
     loading: false,
     error: null,
     performanceStats: createEmptyPerformanceStats(),
+    // Progressive Playback 필드
+    loadedFrames: new Set<number>(),
+    isBuffering: false,
   }
 }
 
@@ -124,6 +127,12 @@ interface CornerstoneMultiViewerActions {
   updateSlotPreloadProgress: (slotId: number, progress: number) => void
   finishSlotPreload: (slotId: number) => void
 
+  // Progressive Playback
+  markFrameLoaded: (slotId: number, frameIndex: number) => void
+  isFrameLoaded: (slotId: number, frameIndex: number) => boolean
+  setBuffering: (slotId: number, isBuffering: boolean) => void
+  getLoadedFrameCount: (slotId: number) => number
+
   // 성능 추적
   updateSlotPerformance: (slotId: number, fps: number, frameTime: number) => void
   resetSlotPerformance: (slotId: number) => void
@@ -151,69 +160,96 @@ type CornerstoneMultiViewerStore = CornerstoneMultiViewerState & CornerstoneMult
 // ==================== 헬퍼 함수 ====================
 
 /**
- * 프리로드 완료 대기 (폴링 방식)
+ * 초기 버퍼 대기 (Progressive Playback)
+ *
+ * 모든 프레임 대기 대신, 초기 버퍼(예: 20프레임)만 로드되면 즉시 반환.
+ * 재생 시작 시간을 대폭 단축.
+ *
  * @param slotId 슬롯 ID
+ * @param requiredFrames 필요한 프레임 수
  * @param get Zustand getter
- * @param timeout 최대 대기 시간 (ms), 기본 30초
- * @param pollInterval 폴링 간격 (ms), 기본 100ms
+ * @param timeout 최대 대기 시간 (ms), 기본 5초
+ * @param pollInterval 폴링 간격 (ms), 기본 50ms
  */
-async function waitForPreloadComplete(
+/**
+ * 범위 [0, maxIndex) 내에서 로드된 프레임 개수 계산
+ * 병렬 배치로 인해 프레임이 순서대로 로드되지 않을 수 있으므로 연속성 대신 개수만 확인
+ */
+function countLoadedFramesInRange(loadedFrames: Set<number>, maxIndex: number): number {
+  let count = 0
+  for (let i = 0; i < maxIndex; i++) {
+    if (loadedFrames.has(i)) count++
+  }
+  return count
+}
+
+async function waitForInitialBuffer(
   slotId: number,
+  requiredFrames: number,
   get: () => CornerstoneMultiViewerStore,
-  timeout = 30000,
-  pollInterval = 100
+  timeout = 10000, // 4x4 모드를 위해 10초로 증가
+  pollInterval = 50
 ): Promise<void> {
   const startTime = Date.now()
 
   return new Promise((resolve) => {
-    const checkPreload = () => {
+    const checkBuffer = () => {
       const slot = get().slots[slotId]
 
-      // 프리로드 완료
-      if (slot?.isPreloaded) {
+      // 슬롯이 없거나 인스턴스가 없으면 즉시 반환
+      if (!slot?.instance) {
         resolve()
         return
       }
 
-      // 프리로드 중이 아닌데 완료도 안됨 → 오류
-      if (!slot?.isPreloading && !slot?.isPreloaded) {
-        resolve() // 오류 상황이지만 재생은 허용
+      const numberOfFrames = slot.instance.numberOfFrames
+      const bufferCheckRange = Math.min(requiredFrames, numberOfFrames)
+
+      // 조건 1: Frame 0이 로드되어야 함 (재생 시작점)
+      const hasFrame0 = slot.loadedFrames.has(0)
+
+      // 조건 2: 범위 내 충분한 프레임이 로드되어야 함
+      const loadedInRange = countLoadedFramesInRange(slot.loadedFrames, bufferCheckRange)
+
+      // Frame 0 로드됨 + 충분한 버퍼 확보 또는 전체 로드 완료
+      if ((hasFrame0 && loadedInRange >= requiredFrames) || slot.isPreloaded) {
+        if (DEBUG_STORE) {
+          console.log(
+            `[MultiViewer] Initial buffer ready for slot ${slotId}: ` +
+              `${loadedInRange}/${requiredFrames} frames in range (total: ${slot.loadedFrames.size})`
+          )
+        }
+        resolve()
         return
       }
 
-      // 타임아웃 체크
+      // 타임아웃 체크 - Frame 0이 있으면 바로 시작
       if (Date.now() - startTime > timeout) {
-        console.warn(`[MultiViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
+        if (hasFrame0) {
+          console.warn(
+            `[MultiViewer] Initial buffer timeout for slot ${slotId}, ` +
+              `starting with ${loadedInRange}/${requiredFrames} frames (Frame 0 ready)`
+          )
+        } else {
+          console.warn(
+            `[MultiViewer] Initial buffer timeout for slot ${slotId}, ` +
+              `Frame 0 not loaded yet, starting anyway`
+          )
+        }
         resolve()
         return
       }
 
       // 계속 대기
-      setTimeout(checkPreload, pollInterval)
+      setTimeout(checkBuffer, pollInterval)
     }
 
-    checkPreload()
+    checkBuffer()
   })
 }
 
-/**
- * 레이아웃에 따른 프리로드 배치 크기 결정
- * 슬롯 수가 많을수록 배치 크기를 줄여 네트워크 포화 방지
- */
-function getBatchSizeForLayout(layout: GridLayout): number {
-  switch (layout) {
-    case '1x1':
-      return 6 // 1개 슬롯: 6개 동시 요청
-    case '2x2':
-      return 4 // 4개 슬롯: 순차 프리로드로 4개씩
-    case '3x3':
-      return 3 // 9개 슬롯: 순차 프리로드로 3개씩
-    case '4x4':
-      return 2 // 16개 슬롯: 순차 프리로드로 2개씩
-    default:
-      return 4
-  }
-}
+// Progressive Playback 상수
+const INITIAL_BUFFER_SIZE = 20 // 초기 버퍼 크기 (재생 시작 전 로드할 프레임 수)
 
 // ==================== Store 구현 ====================
 
@@ -361,6 +397,17 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
   // ==================== 개별 슬롯 재생 제어 ====================
 
+  /**
+   * 슬롯 재생 시작 (Progressive Playback)
+   *
+   * 기존: 모든 프레임 로드 완료까지 대기 (5-10초+)
+   * 개선: 초기 버퍼만 로드 후 즉시 재생 시작 (1-2초)
+   *
+   * 1. 프리로드 시작 (백그라운드)
+   * 2. 초기 버퍼만 대기 (20프레임 또는 전체 프레임 중 작은 값)
+   * 3. 즉시 재생 시작
+   * 4. 나머지 프레임은 백그라운드에서 계속 로드
+   */
   playSlot: async (slotId) => {
     const slot = get().slots[slotId]
     if (!slot?.instance || slot.instance.numberOfFrames <= 1) {
@@ -368,28 +415,57 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       return
     }
 
-    // 1. 프리로드가 완료되지 않았으면 먼저 프리로드
+    const numberOfFrames = slot.instance.numberOfFrames
+    // 초기 버퍼 크기 (전체 프레임 수와 INITIAL_BUFFER_SIZE 중 작은 값)
+    const initialBuffer = Math.min(INITIAL_BUFFER_SIZE, numberOfFrames)
+
+    if (DEBUG_STORE) {
+      console.log(
+        `[MultiViewer] Progressive playSlot for slot ${slotId}: ` +
+          `totalFrames=${numberOfFrames}, initialBuffer=${initialBuffer}, ` +
+          `loadedFrames=${slot.loadedFrames.size}`
+      )
+    }
+
+    // 1. 프리로드가 시작되지 않았으면 시작 (백그라운드에서 계속 진행)
     if (!slot.isPreloaded && !slot.isPreloading) {
-      if (DEBUG_STORE) console.log(`[MultiViewer] Starting preload before play for slot ${slotId}`)
-      await get().preloadSlotFrames(slotId)
+      if (DEBUG_STORE) console.log(`[MultiViewer] Starting progressive preload for slot ${slotId}`)
+      // 비동기로 시작 (await 없이) - 백그라운드에서 계속 로드
+      // .catch()로 에러 핸들링하여 실행 보장
+      get().preloadSlotFrames(slotId).catch((error) => {
+        console.warn(`[MultiViewer] Background preload failed for slot ${slotId}:`, error)
+      })
     }
 
-    // 2. 프리로드 중이면 완료 대기
-    if (get().slots[slotId]?.isPreloading) {
-      if (DEBUG_STORE) console.log(`[MultiViewer] Waiting for preload to complete for slot ${slotId}`)
-      await waitForPreloadComplete(slotId, get)
+    // 2. 초기 버퍼만 대기 (전체 대기 X)
+    if (slot.loadedFrames.size < initialBuffer && !slot.isPreloaded) {
+      if (DEBUG_STORE) {
+        console.log(
+          `[MultiViewer] Waiting for initial buffer: ${slot.loadedFrames.size}/${initialBuffer} frames`
+        )
+      }
+      await waitForInitialBuffer(slotId, initialBuffer, get)
     }
 
-    // 3. 재생 시작
+    // 3. 즉시 재생 시작
     set((state) => ({
       slots: {
         ...state.slots,
         [slotId]: {
           ...state.slots[slotId],
           isPlaying: true,
+          isBuffering: false,
         },
       },
     }))
+
+    if (DEBUG_STORE) {
+      const updatedSlot = get().slots[slotId]
+      console.log(
+        `[MultiViewer] Playback started for slot ${slotId}: ` +
+          `loadedFrames=${updatedSlot?.loadedFrames.size}/${numberOfFrames}`
+      )
+    }
   },
 
   pauseSlot: (slotId) => {
@@ -484,46 +560,55 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       return
     }
 
-    // 2. 순차 프리로드 (네트워크 포화 방지)
-    if (DEBUG_STORE) console.log(`[MultiViewer] Starting sequential preload for ${multiframeSlotIds.length} slots`)
+    // 2. 모든 슬롯 프리로드 병렬 시작 (백그라운드)
+    if (DEBUG_STORE) console.log(`[MultiViewer] Starting parallel preload for ${multiframeSlotIds.length} slots`)
+
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
-      // 이미 프리로드 완료된 슬롯은 스킵
-      if (slot?.isPreloaded) {
-        if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} already preloaded, skipping`)
+      // 이미 완료되었거나 진행 중이면 스킵
+      if (slot?.isPreloaded || slot?.isPreloading) {
+        if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} already preloaded/preloading, skipping`)
         continue
       }
-      // 프리로드 진행 중인 슬롯은 완료 대기
-      if (slot?.isPreloading) {
-        if (DEBUG_STORE) console.log(`[MultiViewer] Waiting for slot ${slotId} preload to complete`)
-        await waitForPreloadComplete(slotId, get)
-      } else {
-        // 프리로드 시작 및 완료 대기
-        if (DEBUG_STORE) console.log(`[MultiViewer] Starting preload for slot ${slotId}`)
-        await get().preloadSlotFrames(slotId)
-      }
+
+      // 백그라운드 프리로드 시작 (await 없음!)
+      get().preloadSlotFrames(slotId).catch((error) => {
+        console.warn(`[playAll] Background preload failed for slot ${slotId}:`, error)
+      })
     }
 
-    // 3. 모든 슬롯 재생 시작
-    const updatedSlots: Record<number, CornerstoneSlotState> = {}
-    for (const slotId of multiframeSlotIds) {
-      const slot = get().slots[slotId]
-      if (slot) {
-        updatedSlots[slotId] = {
-          ...slot,
-          isPlaying: true,
+    // 3. 각 슬롯의 초기 버퍼 대기 후 즉시 재생 시작 (병렬)
+    const INITIAL_BUFFER_SIZE = 20
+
+    await Promise.all(
+      multiframeSlotIds.map(async (slotId) => {
+        const slot = get().slots[slotId]
+        if (!slot?.instance) return
+
+        const numberOfFrames = slot.instance.numberOfFrames
+        const initialBuffer = Math.min(INITIAL_BUFFER_SIZE, numberOfFrames)
+
+        // 초기 버퍼만 대기 (전체 프리로드 아님)
+        if (slot.loadedFrames.size < initialBuffer && !slot.isPreloaded) {
+          await waitForInitialBuffer(slotId, initialBuffer, get)
         }
-      }
-    }
 
-    set((state) => ({
-      slots: {
-        ...state.slots,
-        ...updatedSlots,
-      },
-    }))
+        // 해당 슬롯 즉시 재생 시작
+        set((state) => ({
+          slots: {
+            ...state.slots,
+            [slotId]: {
+              ...state.slots[slotId],
+              isPlaying: true,
+            },
+          },
+        }))
 
-    if (DEBUG_STORE) console.log(`[MultiViewer] playAll started for ${multiframeSlotIds.length} slots`)
+        if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} started playing`)
+      })
+    )
+
+    if (DEBUG_STORE) console.log(`[MultiViewer] playAll completed for ${multiframeSlotIds.length} slots`)
   },
 
   pauseAll: () => {
@@ -595,14 +680,15 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   // ==================== 프리로딩 ====================
 
   /**
-   * 슬롯의 모든 프레임 프리로드 (2단계 최적화)
+   * 슬롯의 모든 프레임 프리로드 (2단계 최적화 + Progressive Playback)
    *
    * Phase 1: 배치 API로 PNG 프리페치 (0-50%)
-   *   - /frames/1,2,3.../rendered 배치 요청
+   *   - /frames/1,2,3.../rendered 배치 요청 (3개 배치 병렬)
    *   - Rendered 캐시에 PNG 데이터 저장
+   *   - 개별 프레임 로드 시 loadedFrames 업데이트 (Progressive Playback 지원)
    *
    * Phase 2: Cornerstone 로드 (50-100%)
-   *   - imageLoader.loadImage() 호출
+   *   - imageLoader.loadImage() 호출 (병렬 배치)
    *   - Rendered Interceptor가 캐시에서 데이터 반환 (캐시 히트)
    */
   preloadSlotFrames: async (slotId) => {
@@ -619,7 +705,8 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
     const { numberOfFrames } = slot.instance
     if (numberOfFrames <= 1) {
-      // 싱글 프레임은 프리로드 불필요
+      // 싱글 프레임은 프리로드 불필요 (프레임 0을 로드됨으로 마킹)
+      get().markFrameLoaded(slotId, 0)
       get().finishSlotPreload(slotId)
       return
     }
@@ -628,8 +715,9 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
-      const CORNERSTONE_BATCH_SIZE = getBatchSizeForLayout(get().layout)
       const PREFETCH_BATCH_SIZE = 10 // 배치 API 최적 크기
+      const CORNERSTONE_CONCURRENT_BATCHES = 2 // Phase 2 동시 배치 수
+      const CORNERSTONE_BATCH_SIZE = 10 // Phase 2 배치 크기 증가
 
       if (DEBUG_STORE) console.log(`[MultiViewer] 2-Phase preload for slot ${slotId}: ${numberOfFrames} frames`)
 
@@ -646,44 +734,66 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
           // 0-50% 진행률
           const progress = Math.round((loaded / total) * 50)
           get().updateSlotPreloadProgress(slotId, progress)
+        },
+        // onFrameLoaded 콜백: loadedFrames 업데이트 (Progressive Playback)
+        (frameIndex) => {
+          get().markFrameLoaded(slotId, frameIndex)
         }
       )
 
       if (DEBUG_STORE) console.log(`[MultiViewer] Phase 1 complete: PNG data cached for slot ${slotId}`)
 
-      // ==================== Phase 2: Cornerstone 로드 (50-100%) ====================
+      // ==================== Phase 2: Cornerstone 로드 (50-100%) - 병렬 배치 ====================
       if (DEBUG_STORE) console.log(`[MultiViewer] Phase 2: Cornerstone load for slot ${slotId}`)
       let loadedCount = 0
 
+      // 모든 배치 생성
+      const allBatches: number[][] = []
       for (let i = 0; i < numberOfFrames; i += CORNERSTONE_BATCH_SIZE) {
-        const batch = []
+        const batch: number[] = []
         for (let j = i; j < Math.min(i + CORNERSTONE_BATCH_SIZE, numberOfFrames); j++) {
-          const imageId = createWadoRsRenderedImageId(
-            studyInstanceUid,
-            seriesInstanceUid,
-            sopInstanceUid,
-            j // 0-based frame number
-          )
-
-          batch.push(
-            imageLoader
-              .loadImage(imageId)
-              .then(() => {
-                loadedCount++
-                // 50-100% 진행률
-                const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
-                get().updateSlotPreloadProgress(slotId, progress)
-              })
-              .catch((error: unknown) => {
-                console.warn(`[MultiViewer] Failed to load frame ${j} for slot ${slotId}:`, error)
-                loadedCount++
-                const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
-                get().updateSlotPreloadProgress(slotId, progress)
-              })
-          )
+          batch.push(j)
         }
+        allBatches.push(batch)
+      }
 
-        await Promise.all(batch)
+      // N개 배치씩 병렬 처리
+      for (let i = 0; i < allBatches.length; i += CORNERSTONE_CONCURRENT_BATCHES) {
+        const concurrentBatches = allBatches.slice(i, i + CORNERSTONE_CONCURRENT_BATCHES)
+
+        await Promise.all(
+          concurrentBatches.map((batchFrames) =>
+            Promise.all(
+              batchFrames.map((frameIndex) => {
+                const imageId = createWadoRsRenderedImageId(
+                  studyInstanceUid,
+                  seriesInstanceUid,
+                  sopInstanceUid,
+                  frameIndex // 0-based frame number
+                )
+
+                return imageLoader
+                  .loadImage(imageId)
+                  .then(() => {
+                    loadedCount++
+                    // Progressive Playback: 로드된 프레임 추적
+                    get().markFrameLoaded(slotId, frameIndex)
+                    // 50-100% 진행률
+                    const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
+                    get().updateSlotPreloadProgress(slotId, progress)
+                  })
+                  .catch((error: unknown) => {
+                    console.warn(`[MultiViewer] Failed to load frame ${frameIndex} for slot ${slotId}:`, error)
+                    loadedCount++
+                    // 실패해도 프레임 추적 (재시도 가능하도록)
+                    // Note: 실패한 프레임은 markFrameLoaded 하지 않음
+                    const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
+                    get().updateSlotPreloadProgress(slotId, progress)
+                  })
+              })
+            )
+          )
+        )
       }
 
       get().finishSlotPreload(slotId)
@@ -745,6 +855,71 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         },
       },
     }))
+  },
+
+  // ==================== Progressive Playback ====================
+
+  /**
+   * 프레임 로드 완료 마킹
+   * Phase 1에서 개별 프레임이 캐시되면 호출됨
+   */
+  markFrameLoaded: (slotId, frameIndex) => {
+    const slot = get().slots[slotId]
+    if (!slot) return
+
+    // 이미 로드된 프레임이면 무시
+    if (slot.loadedFrames.has(frameIndex)) return
+
+    // 새 Set 생성 (immutable update)
+    const newLoadedFrames = new Set(slot.loadedFrames)
+    newLoadedFrames.add(frameIndex)
+
+    set((state) => ({
+      slots: {
+        ...state.slots,
+        [slotId]: {
+          ...state.slots[slotId],
+          loadedFrames: newLoadedFrames,
+        },
+      },
+    }))
+  },
+
+  /**
+   * 프레임 로드 여부 확인
+   */
+  isFrameLoaded: (slotId, frameIndex) => {
+    const slot = get().slots[slotId]
+    if (!slot) return false
+    return slot.loadedFrames.has(frameIndex) || slot.isPreloaded
+  },
+
+  /**
+   * 버퍼링 상태 설정
+   */
+  setBuffering: (slotId, isBuffering) => {
+    const slot = get().slots[slotId]
+    if (!slot || slot.isBuffering === isBuffering) return
+
+    set((state) => ({
+      slots: {
+        ...state.slots,
+        [slotId]: {
+          ...state.slots[slotId],
+          isBuffering,
+        },
+      },
+    }))
+  },
+
+  /**
+   * 로드된 프레임 수 반환
+   */
+  getLoadedFrameCount: (slotId) => {
+    const slot = get().slots[slotId]
+    if (!slot) return 0
+    if (slot.isPreloaded) return slot.instance?.numberOfFrames || 0
+    return slot.loadedFrames.size
   },
 
   // ==================== 성능 추적 ====================

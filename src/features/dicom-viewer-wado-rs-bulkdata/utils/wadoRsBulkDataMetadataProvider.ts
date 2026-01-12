@@ -14,6 +14,7 @@
 import { metaData } from '@cornerstonejs/core'
 import { getTenantId } from '@/lib/tenantStore'
 import { API_BASE_URL } from '@/lib/config'
+import { withRetry } from '@/lib/errors'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_PROVIDER = false
@@ -109,8 +110,11 @@ export async function fetchAndCacheMetadata(
     return pending
   }
 
-  // 3. 새 요청 생성
-  const fetchPromise = fetchMetadataFromBackend(studyUid, seriesUid, sopInstanceUid)
+  // 3. 새 요청 생성 (withRetry로 재시도)
+  const fetchPromise = withRetry(
+    () => fetchMetadataFromBackend(studyUid, seriesUid, sopInstanceUid),
+    { maxRetries: 2, retryDelay: 500, useBackoff: true }
+  )
   pendingFetches.set(sopInstanceUid, fetchPromise)
 
   try {

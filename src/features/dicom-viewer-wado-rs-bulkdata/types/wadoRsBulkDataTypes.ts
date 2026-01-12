@@ -60,6 +60,8 @@ export interface WadoRsBulkDataSlotState {
   loading: boolean
   /** 에러 메시지 */
   error: string | null
+  /** 메타데이터 fetch 에러 (non-fatal, fallback 값 사용 시 경고 표시) */
+  metadataError: string | null
   /** 성능 통계 */
   performanceStats: WadoRsBulkDataSlotPerformanceStats
 }

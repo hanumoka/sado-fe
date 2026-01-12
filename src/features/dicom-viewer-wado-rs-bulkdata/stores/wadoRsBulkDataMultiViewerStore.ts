@@ -58,6 +58,7 @@ function createEmptySlotState(): WadoRsBulkDataSlotState {
     preloadProgress: 0,
     loading: false,
     error: null,
+    metadataError: null,
     performanceStats: createEmptyPerformanceStats(),
   }
 }
@@ -142,6 +143,7 @@ interface WadoRsBulkDataMultiViewerActions {
   // 에러 처리
   setSlotError: (slotId: number, error: string) => void
   clearSlotError: (slotId: number) => void
+  setSlotMetadataError: (slotId: number, error: string | null) => void
 
   // 유틸리티
   getSlotState: (slotId: number) => WadoRsBulkDataSlotState
@@ -874,6 +876,18 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         [slotId]: {
           ...state.slots[slotId],
           error: null,
+        },
+      },
+    }))
+  },
+
+  setSlotMetadataError: (slotId, error) => {
+    set((state) => ({
+      slots: {
+        ...state.slots,
+        [slotId]: {
+          ...state.slots[slotId],
+          metadataError: error,
         },
       },
     }))

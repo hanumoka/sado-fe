@@ -15,6 +15,7 @@ import {
 } from '@cornerstonejs/core'
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMultiViewerStore'
+import { handleDicomError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
 import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
@@ -58,6 +59,9 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   const error = useWadoRsBulkDataMultiViewerStore(
     (state) => state.slots[slotId]?.error ?? null
   )
+  const metadataError = useWadoRsBulkDataMultiViewerStore(
+    (state) => state.slots[slotId]?.metadataError ?? null
+  )
 
   // 객체 타입 필드 (shallow 비교로 불필요한 리렌더링 방지)
   const instance = useWadoRsBulkDataMultiViewerStore(
@@ -78,6 +82,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   const allThumbnailsLoaded = useWadoRsBulkDataMultiViewerStore((state) => state.allThumbnailsLoaded)
   const assignInstanceToSlot = useWadoRsBulkDataMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useWadoRsBulkDataMultiViewerStore((state) => state.preloadSlotFrames)
+  const setSlotMetadataError = useWadoRsBulkDataMultiViewerStore((state) => state.setSlotMetadataError)
   const viewportId = `wado-rs-bulkdata-slot-${slotId}`
 
   // ==================== 드래그 앤 드롭 ====================
@@ -208,11 +213,14 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone이 PixelData를 디코딩할 수 있음
       try {
-        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Fetching metadata before setStack...`)
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Fetching metadata before setStack...`)
         await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
-        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Metadata cached`)
-      } catch (metadataError) {
-        if (DEBUG_SLOT) console.error(`[WadoRsBulkDataSlot ${slotId}] Failed to fetch metadata:`, metadataError)
+        setSlotMetadataError(slotId, null) // 성공 시 에러 클리어
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Metadata cached`)
+      } catch (metadataErr) {
+        const errorMessage = handleDicomError(metadataErr, 'fetchMetadata')
+        console.error(`[WadoRsBulkDataSlot ${slotId}] Failed to fetch metadata:`, metadataErr)
+        setSlotMetadataError(slotId, errorMessage)
         // 메타데이터 실패해도 계속 진행 (fallback 값 사용)
       }
 
@@ -431,6 +439,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
           isPreloading={isPreloading}
           isPreloaded={isPreloaded}
           isPlaying={isPlaying}
+          metadataError={metadataError}
         />
       </div>
     </div>

@@ -14,6 +14,8 @@ interface WadoRsBulkDataSlotOverlayProps {
   isPreloading: boolean
   isPreloaded: boolean
   isPlaying: boolean
+  /** 메타데이터 fetch 에러 (non-fatal 경고) */
+  metadataError?: string | null
 }
 
 export function WadoRsBulkDataSlotOverlay({
@@ -23,6 +25,7 @@ export function WadoRsBulkDataSlotOverlay({
   isPreloading,
   isPreloaded,
   isPlaying,
+  metadataError,
 }: WadoRsBulkDataSlotOverlayProps) {
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -32,6 +35,18 @@ export function WadoRsBulkDataSlotOverlay({
           Slot {slotId + 1}
         </span>
       </div>
+
+      {/* 메타데이터 경고 배너 (non-fatal) */}
+      {metadataError && (
+        <div className="absolute top-10 left-2 right-2">
+          <div className="bg-yellow-600/80 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+            <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span className="truncate">Metadata fallback</span>
+          </div>
+        </div>
+      )}
 
       {/* 상단 우측: 총 프레임 수 + WADO-RS BulkData 표시 */}
       <div className="absolute top-2 right-2 text-right">

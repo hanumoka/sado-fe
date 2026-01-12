@@ -17,7 +17,6 @@
 
 import { retrieveFrameBatch } from '@/lib/services/dicomWebService'
 import { cachePixelData, hasPixelData } from './wadoRsPixelDataCache'
-import { API_BASE_URL } from '@/lib/config'
 import { formatBytes } from '@/lib/utils'
 
 // 디버그 로그 플래그
@@ -34,6 +33,10 @@ let totalBytesPrefetched = 0
  * cornerstoneDICOMImageLoader가 요청하는 URL과 동일한 형식으로 생성해야 함.
  * Fetch Interceptor가 이 URL을 캐시 키로 사용.
  *
+ * 상대 경로 사용:
+ * - wadoRsBulkDataImageIdHelper.ts와 동일한 형식
+ * - 캐시 키 정규화 시 경로만 비교하므로 일치 보장
+ *
  * @param studyUid Study Instance UID
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
@@ -46,7 +49,8 @@ function buildFrameUrl(
   sopInstanceUid: string,
   frameNumber: number
 ): string {
-  return `${API_BASE_URL}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+  // 상대 경로 사용 (Vite 프록시 활용)
+  return `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
 }
 
 /**

@@ -19,6 +19,7 @@ import { handleDicomError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
 import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
+import { prefetchFrameBatch } from '../utils/wadoRsBatchPrefetcher'
 import { useShallow } from 'zustand/react/shallow'
 import { WadoRsBulkDataSlotOverlay } from './WadoRsBulkDataSlotOverlay'
 import type { WadoRsBulkDataInstanceSummary } from '../types/wadoRsBulkDataTypes'
@@ -232,14 +233,30 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         numberOfFrames
       )
 
+      // 초기 프레임 배치 프리페치 (캐시에 저장)
+      // setStack/loadImage 호출 전에 캐시해야 개별 HTTP 요청 방지
+      // 배치 크기 10: 단일 프레임 요청 방지 + 초기 로드 최적화
+      const INITIAL_BATCH_SIZE = 10
+      const initialFrameCount = Math.min(INITIAL_BATCH_SIZE, numberOfFrames)
+      const initialFrames = Array.from({ length: initialFrameCount }, (_, i) => i + 1)
+
+      try {
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Prefetching ${initialFrameCount} frames via batch API...`)
+        await prefetchFrameBatch(studyInstanceUid, seriesInstanceUid, sopInstanceUid, initialFrames)
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Initial frames prefetched`)
+      } catch (prefetchErr) {
+        // 프리페치 실패해도 계속 진행 (개별 요청으로 fallback)
+        if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] First frame prefetch failed:`, prefetchErr)
+      }
+
       try {
         if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
         await viewportRef.current!.setStack(imageIds)
         if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] setStack completed`)
 
-        // 첫 프레임 로드
+        // 첫 프레임 로드 (캐시에서 반환됨)
         if (imageIds.length > 0) {
-          if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling loadImage for first frame...`)
+          if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling loadImage for first frame (cache hit expected)...`)
           await imageLoader.loadImage(imageIds[0])
           if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] loadImage completed`)
         }
@@ -254,6 +271,12 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
           renderingEngine.resize()
         }
         viewportRef.current!.resetCamera()
+
+        // Cornerstone 내부 상태 동기화를 위한 프레임 대기
+        // 브라우저 레이아웃 계산 완료 후 렌더링해야 검은 화면 방지
+        await new Promise(resolve => requestAnimationFrame(resolve))
+        await new Promise(resolve => requestAnimationFrame(resolve))
+
         viewportRef.current!.render()
 
         if (DEBUG_SLOT) {

@@ -6,12 +6,29 @@
  *
  * WADO-URI와의 차이:
  * - WADO-URI: wadouri:http://host/wado?requestType=WADO&...
- * - WADO-RS BulkData: wadors:http://host/dicomweb/studies/.../frames/1
+ * - WADO-RS BulkData: wadors:/dicomweb/studies/.../frames/1 (상대 경로)
+ *
+ * 상대 경로 사용 이유:
+ * - Vite 프록시가 /dicomweb 요청을 백엔드로 전달
+ * - 배치 프리페처와 동일한 경로로 캐시 키 일치 보장
+ * - 포트 불일치 문제 해결 (10300 vs 10201)
  */
 
 import { API_BASE_URL } from '@/lib/config'
 
-const API_BASE = API_BASE_URL
+/**
+ * Cornerstone imageId용: 상대 경로 사용 (Vite 프록시 활용)
+ * - 배치 프리페처의 DICOMWEB_BASE_URL과 동일한 형식
+ * - 캐시 키 정규화 시 경로만 비교하므로 일치 보장
+ */
+const API_BASE = ''
+
+/**
+ * 썸네일 URL용: 절대 경로 사용
+ * - <img src="..."> 태그에서 직접 사용되므로 절대 경로 필요
+ * - Cornerstone 로더와 무관하게 독립적으로 작동
+ */
+const THUMBNAIL_BASE = API_BASE_URL
 
 /**
  * WADO-RS BulkData imageId 생성
@@ -25,11 +42,11 @@ const API_BASE = API_BASE_URL
  * @example
  * // 단일 프레임 (frame 1)
  * createWadoRsBulkDataImageId('1.2.3', '1.2.4', '1.2.5')
- * // → 'wadors:http://localhost:10201/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/1'
+ * // → 'wadors:/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/1'
  *
  * // 멀티프레임 (프레임 5, 0-based → frame 6)
  * createWadoRsBulkDataImageId('1.2.3', '1.2.4', '1.2.5', 5)
- * // → 'wadors:http://localhost:10201/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/6'
+ * // → 'wadors:/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/6'
  */
 export function createWadoRsBulkDataImageId(
   studyUid: string,
@@ -89,7 +106,8 @@ export function getWadoRsBulkDataThumbnailUrl(
   sopInstanceUid: string
 ): string {
   // WADO-RS Rendered API (PNG)로 썸네일 생성
-  return `${API_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/rendered`
+  // 썸네일은 <img> 태그에서 직접 사용되므로 절대 경로 사용
+  return `${THUMBNAIL_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/rendered`
 }
 
 /**

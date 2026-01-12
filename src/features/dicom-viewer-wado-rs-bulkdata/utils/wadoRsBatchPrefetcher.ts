@@ -139,9 +139,10 @@ export async function prefetchFrameBatch(
 }
 
 /**
- * 전체 인스턴스 프레임 프리페치
+ * 전체 인스턴스 프레임 프리페치 (병렬 배치 처리)
  *
  * 지정된 배치 크기로 나누어 모든 프레임을 프리페치.
+ * 병렬 배치 처리로 네트워크 활용도를 높임.
  *
  * @param studyUid Study Instance UID
  * @param seriesUid Series Instance UID
@@ -149,6 +150,7 @@ export async function prefetchFrameBatch(
  * @param totalFrames 총 프레임 수
  * @param batchSize 배치 크기 (기본값: 10)
  * @param onProgress 진행 콜백 (loaded, total)
+ * @param onFrameLoaded 개별 프레임 로드 콜백 (frameNumber: 0-based)
  * @returns 캐시된 총 프레임 수
  */
 export async function prefetchAllFrames(
@@ -157,42 +159,85 @@ export async function prefetchAllFrames(
   sopInstanceUid: string,
   totalFrames: number,
   batchSize: number = 10,
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  onFrameLoaded?: (frameNumber: number) => void
 ): Promise<number> {
   if (totalFrames <= 0) {
     return 0
   }
 
+  // 동시 요청 배치 수 (네트워크 활용도 ↑, 서버 부하 고려)
+  const CONCURRENT_BATCHES = 3
+
   if (DEBUG_PREFETCHER) {
-    if (DEBUG_PREFETCHER) console.log(
-      `[WadoRsBatchPrefetcher] Starting prefetch of ${totalFrames} frames in batches of ${batchSize}`
+    console.log(
+      `[WadoRsBatchPrefetcher] Starting prefetch of ${totalFrames} frames in batches of ${batchSize}, concurrent: ${CONCURRENT_BATCHES}`
     )
   }
 
-  let totalCached = 0
-
+  // 1. 모든 배치 생성
+  const allBatches: number[][] = []
   for (let i = 0; i < totalFrames; i += batchSize) {
-    const frameNumbers: number[] = []
+    const frames: number[] = []
     for (let j = i; j < Math.min(i + batchSize, totalFrames); j++) {
-      frameNumbers.push(j + 1) // 1-based
+      frames.push(j + 1) // 1-based for API
     }
-
-    const cached = await prefetchFrameBatch(
-      studyUid,
-      seriesUid,
-      sopInstanceUid,
-      frameNumbers,
-      (loaded, _total) => {
-        const overallLoaded = i + loaded
-        onProgress?.(overallLoaded, totalFrames)
-      }
-    )
-
-    totalCached = i + cached
+    allBatches.push(frames)
   }
 
   if (DEBUG_PREFETCHER) {
-    if (DEBUG_PREFETCHER) if (DEBUG_PREFETCHER) console.log(`[WadoRsBatchPrefetcher] Prefetch complete: ${totalCached}/${totalFrames} frames`)
+    console.log(`[WadoRsBatchPrefetcher] Created ${allBatches.length} batches`)
+  }
+
+  // 2. N개 배치씩 병렬 처리
+  let totalCached = 0
+  // 공유 카운터로 진행률 정확하게 추적 (병렬 처리 중에도 정확)
+  let globalLoadedCount = 0
+
+  for (let i = 0; i < allBatches.length; i += CONCURRENT_BATCHES) {
+    const concurrentBatches = allBatches.slice(i, i + CONCURRENT_BATCHES)
+
+    // 병렬 요청 - Promise.allSettled로 부분 실패 허용
+    const results = await Promise.allSettled(
+      concurrentBatches.map((frames) =>
+        prefetchFrameBatch(
+          studyUid,
+          seriesUid,
+          sopInstanceUid,
+          frames,
+          () => {
+            // 진행률 업데이트: 배치 내부 진행은 무시
+          }
+        ).then((cached) => {
+          // 공유 카운터 업데이트 후 진행률 보고
+          globalLoadedCount += cached
+          onProgress?.(Math.min(globalLoadedCount, totalFrames), totalFrames)
+
+          // 개별 프레임 로드 콜백 (0-based로 변환)
+          if (onFrameLoaded) {
+            for (const frame of frames) {
+              onFrameLoaded(frame - 1)
+            }
+          }
+
+          return cached
+        })
+      )
+    )
+
+    // 결과 집계 - Promise.allSettled 결과 처리
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        totalCached += result.value
+      } else {
+        // 실패한 배치 로그
+        console.warn('[WadoRsBatchPrefetcher] Batch failed:', result.reason)
+      }
+    }
+  }
+
+  if (DEBUG_PREFETCHER) {
+    console.log(`[WadoRsBatchPrefetcher] Prefetch complete: ${totalCached}/${totalFrames} frames`)
   }
 
   return totalCached

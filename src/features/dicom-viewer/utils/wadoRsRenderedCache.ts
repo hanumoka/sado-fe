@@ -19,6 +19,10 @@ const DEBUG_CACHE = false
 // 캐시 저장소 (정규화된 URL → ArrayBuffer)
 const renderedCache = new Map<string, ArrayBuffer>()
 
+// URL 정규화 캐시 (원본 URL → 정규화된 경로)
+// new URL() 생성 비용을 줄이기 위해 캐싱
+const normalizedUrlCache = new Map<string, string>()
+
 // 캐시 항목 메타데이터 (LRU 관리용)
 interface CacheEntry {
   url: string
@@ -51,15 +55,27 @@ let cacheMisses = 0
  * @returns 정규화된 경로
  */
 function normalizeUrlToPath(url: string): string {
+  // 캐시에서 먼저 조회 (O(1))
+  const cached = normalizedUrlCache.get(url)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  let normalized: string
   try {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       const urlObj = new URL(url)
-      return urlObj.pathname
+      normalized = urlObj.pathname
+    } else {
+      normalized = url
     }
-    return url
   } catch {
-    return url
+    normalized = url
   }
+
+  // 캐시에 저장 (URL 정규화 캐시는 크기 제한 없음 - 문자열만 저장하므로 메모리 영향 적음)
+  normalizedUrlCache.set(url, normalized)
+  return normalized
 }
 
 /**
@@ -148,6 +164,7 @@ export function clearRenderedCache(): void {
   currentCacheSize = 0
   cacheHits = 0
   cacheMisses = 0
+  normalizedUrlCache.clear()
 
   if (DEBUG_CACHE) {
     if (DEBUG_CACHE) console.log('[RenderedCache] Cache cleared')

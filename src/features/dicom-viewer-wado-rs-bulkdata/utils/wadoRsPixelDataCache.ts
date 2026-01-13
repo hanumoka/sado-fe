@@ -32,8 +32,9 @@ interface CacheEntry {
 }
 const cacheMetadata: CacheEntry[] = []
 
-// 최대 캐시 크기 (500MB)
-const MAX_CACHE_SIZE = 500 * 1024 * 1024
+// 최대 캐시 크기 (4GB)
+// 4x4 레이아웃 (16슬롯 × 100프레임 × 2MB = 3.2GB)을 충분히 수용
+const MAX_CACHE_SIZE = 4 * 1024 * 1024 * 1024
 
 // 현재 캐시 크기
 let currentCacheSize = 0
@@ -48,10 +49,15 @@ let cacheMisses = 0
  * 포트 번호 차이로 인한 캐시 미스를 방지하기 위해
  * 호스트/포트를 제거하고 경로만 사용
  *
+ * wadors: 스킴도 처리하여 Cornerstone imageId와 프리로드 URL 간의
+ * 캐시 키 불일치 문제를 해결
+ *
  * @example
  * - "http://localhost:10201/dicomweb/studies/.../frames/1" → "/dicomweb/studies/.../frames/1"
  * - "http://localhost:10300/dicomweb/studies/.../frames/1" → "/dicomweb/studies/.../frames/1"
  * - "/dicomweb/studies/.../frames/1" → "/dicomweb/studies/.../frames/1"
+ * - "wadors:/dicomweb/studies/.../frames/1" → "/dicomweb/studies/.../frames/1"
+ * - "wadors:http://localhost:10201/dicomweb/.../frames/1" → "/dicomweb/.../frames/1"
  *
  * @param url 원본 URL
  * @returns 정규화된 경로
@@ -65,13 +71,21 @@ function normalizeUrlToPath(url: string): string {
 
   let normalized: string
   try {
+    // wadors: 스킴 제거 (Cornerstone imageId 형식)
+    // 예: "wadors:/dicomweb/..." → "/dicomweb/..."
+    // 예: "wadors:http://localhost:10201/dicomweb/..." → "http://localhost:10201/dicomweb/..."
+    let urlToProcess = url
+    if (url.startsWith('wadors:')) {
+      urlToProcess = url.slice(7) // 'wadors:' (7글자) 제거
+    }
+
     // 프로토콜이 있는 절대 URL인 경우
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      const urlObj = new URL(url)
+    if (urlToProcess.startsWith('http://') || urlToProcess.startsWith('https://')) {
+      const urlObj = new URL(urlToProcess)
       normalized = urlObj.pathname
     } else {
       // 이미 경로만 있는 경우
-      normalized = url
+      normalized = urlToProcess
     }
   } catch {
     // URL 파싱 실패 시 원본 반환

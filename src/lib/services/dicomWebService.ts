@@ -435,15 +435,18 @@ export function getWadoUriUrl(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (1-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, 기본값: 512)
  * @returns Rendered image URL
  */
 export function getRenderedFrameUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  resolution?: number
 ): string {
-  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
+  const baseUrl = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
+  return resolution && resolution !== 512 ? `${baseUrl}?resolution=${resolution}` : baseUrl
 }
 
 /**
@@ -453,15 +456,17 @@ export function getRenderedFrameUrl(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (1-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, 기본값: 512)
  * @returns Image Blob
  */
 export async function getRenderedFrame(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  resolution?: number
 ): Promise<Blob> {
-  const url = getRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+  const url = getRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber, resolution)
   if (DEBUG_SERVICE) console.log('[dicomWebService] getRenderedFrame URL:', url)
 
   try {
@@ -767,34 +772,39 @@ export async function retrieveFrameBatchWithMetadata(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, 기본값: 512)
  * @returns FrameList Rendered URL (예: /frames/1,2,3,4,5/rendered)
  */
 export function getRenderedFrameListUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumbers: number[]
+  frameNumbers: number[],
+  resolution?: number
 ): string {
   const frameList = frameNumbers.join(',')
-  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}/rendered`
+  const baseUrl = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}/rendered`
+  return resolution && resolution !== 512 ? `${baseUrl}?resolution=${resolution}` : baseUrl
 }
 
 /**
  * WADO-RS Rendered: 다중 프레임 배치 조회 (DICOMweb FrameList 표준)
  *
- * 단일 HTTP 요청으로 여러 프레임의 렌더링된 PNG를 조회합니다.
+ * 단일 HTTP 요청으로 여러 프레임의 렌더링된 PNG/JPEG를 조회합니다.
  *
  * @param studyUid Study Instance UID
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, 기본값: 512)
  * @returns ParsedFrame 배열 (프레임 번호로 정렬됨)
  */
 export async function retrieveRenderedFrameBatch(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumbers: number[]
+  frameNumbers: number[],
+  resolution?: number
 ): Promise<ParsedFrame[]> {
   if (frameNumbers.length === 0) {
     return []
@@ -802,16 +812,18 @@ export async function retrieveRenderedFrameBatch(
 
   // 단일 프레임은 기존 API 사용 (최적화)
   if (frameNumbers.length === 1) {
-    const blob = await getRenderedFrame(studyUid, seriesUid, sopInstanceUid, frameNumbers[0])
+    const blob = await getRenderedFrame(studyUid, seriesUid, sopInstanceUid, frameNumbers[0], resolution)
     const data = await blob.arrayBuffer()
+    // resolution에 따라 contentType 결정
+    const contentType = resolution && resolution !== 512 ? 'image/jpeg' : 'image/png'
     return [{
       frameNumber: frameNumbers[0],
       data,
-      contentType: 'image/png',
+      contentType,
     }]
   }
 
-  const url = getRenderedFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers)
+  const url = getRenderedFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers, resolution)
 
   const response = await fetch(url, {
     headers: getDicomWebHeaders('multipart/related; type="image/png"'),

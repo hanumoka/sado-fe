@@ -38,15 +38,18 @@ let totalBytesPrefetched = 0
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (1-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, optional)
  * @returns Rendered 프레임 URL
  */
 function buildRenderedFrameUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  resolution?: number
 ): string {
-  return `${API_BASE_URL}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
+  const baseUrl = `${API_BASE_URL}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
+  return resolution && resolution !== 512 ? `${baseUrl}?resolution=${resolution}` : baseUrl
 }
 
 /**
@@ -60,6 +63,7 @@ function buildRenderedFrameUrl(
  * @param frameNumbers 프레임 번호 배열 (1-based)
  * @param onProgress 진행 콜백 (loaded, total)
  * @param onFrameLoaded 개별 프레임 로드 콜백 (frameNumber: 0-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, optional)
  * @returns 캐시된 프레임 수
  */
 export async function prefetchRenderedFrameBatch(
@@ -68,15 +72,16 @@ export async function prefetchRenderedFrameBatch(
   sopInstanceUid: string,
   frameNumbers: number[],
   onProgress?: (loaded: number, total: number) => void,
-  onFrameLoaded?: (frameNumber: number) => void
+  onFrameLoaded?: (frameNumber: number) => void,
+  resolution?: number
 ): Promise<number> {
   if (frameNumbers.length === 0) {
     return 0
   }
 
-  // 이미 캐시된 프레임 필터링
+  // 이미 캐시된 프레임 필터링 (resolution 포함한 URL)
   const uncachedFrames = frameNumbers.filter((frameNumber) => {
-    const url = buildRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+    const url = buildRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber, resolution)
     return !hasRenderedFrame(url)
   })
 
@@ -99,20 +104,21 @@ export async function prefetchRenderedFrameBatch(
   totalPrefetchCalls++
 
   try {
-    // 배치 API 호출 (ParsedFrame[] 반환)
+    // 배치 API 호출 (ParsedFrame[] 반환, resolution 포함)
     const parsedFrames = await retrieveRenderedFrameBatch(
       studyUid,
       seriesUid,
       sopInstanceUid,
-      uncachedFrames
+      uncachedFrames,
+      resolution
     )
 
-    // 각 프레임을 캐시에 저장
+    // 각 프레임을 캐시에 저장 (resolution 포함한 URL)
     let cached = frameNumbers.length - uncachedFrames.length // 이미 캐시된 수
     let bytesCached = 0
 
     for (const frame of parsedFrames) {
-      const url = buildRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frame.frameNumber)
+      const url = buildRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frame.frameNumber, resolution)
       cacheRenderedFrame(url, frame.data)
 
       cached++
@@ -151,6 +157,7 @@ export async function prefetchRenderedFrameBatch(
  * @param batchSize 배치 크기 (기본값: 10)
  * @param onProgress 진행 콜백 (loaded, total)
  * @param onFrameLoaded 개별 프레임 로드 콜백 (frameNumber: 0-based)
+ * @param resolution 사전렌더링 해상도 (512/256/128, optional)
  * @returns 캐시된 총 프레임 수
  */
 export async function prefetchAllRenderedFrames(
@@ -160,7 +167,8 @@ export async function prefetchAllRenderedFrames(
   totalFrames: number,
   batchSize: number = 10,
   onProgress?: (loaded: number, total: number) => void,
-  onFrameLoaded?: (frameNumber: number) => void
+  onFrameLoaded?: (frameNumber: number) => void,
+  resolution?: number
 ): Promise<number> {
   if (totalFrames <= 0) {
     return 0
@@ -209,7 +217,8 @@ export async function prefetchAllRenderedFrames(
             // 진행률 업데이트: 배치 내부 진행은 무시
           },
           // 개별 프레임 로드 콜백 - 각 프레임 캐시 시 즉시 호출됨
-          onFrameLoaded
+          onFrameLoaded,
+          resolution
         ).then((cached) => {
           // 공유 카운터 업데이트 후 진행률 보고
           globalLoadedCount += cached

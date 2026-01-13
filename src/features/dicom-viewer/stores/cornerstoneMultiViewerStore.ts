@@ -98,6 +98,7 @@ interface CornerstoneMultiViewerActions {
   setLayout: (layout: GridLayout) => void
   setApiType: (apiType: ApiType) => void
   setGlobalFps: (fps: number) => void
+  setGlobalResolution: (resolution: number) => void
 
   // 슬롯 인스턴스 관리
   assignInstanceToSlot: (slotId: number, instance: InstanceSummary) => void
@@ -258,6 +259,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   layout: '1x1',
   apiType: 'wado-rs',
   globalFps: 30,
+  globalResolution: 512, // 512=PNG, 256=JPEG, 128=JPEG
   slots: createInitialSlots(),
   availableInstances: [],
 
@@ -278,6 +280,14 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
   setGlobalFps: (fps) => {
     set({ globalFps: Math.max(1, Math.min(120, fps)) })
+  },
+
+  setGlobalResolution: (resolution) => {
+    // 유효한 해상도만 허용 (512, 256, 128)
+    const validResolutions = [512, 256, 128]
+    if (validResolutions.includes(resolution)) {
+      set({ globalResolution: resolution })
+    }
   },
 
   // ==================== 슬롯 인스턴스 관리 ====================
@@ -721,8 +731,9 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
       if (DEBUG_STORE) console.log(`[MultiViewer] 2-Phase preload for slot ${slotId}: ${numberOfFrames} frames`)
 
-      // ==================== Phase 1: 배치 API로 PNG 프리페치 (0-50%) ====================
-      if (DEBUG_STORE) console.log(`[MultiViewer] Phase 1: Batch API prefetch for slot ${slotId}`)
+      // ==================== Phase 1: 배치 API로 PNG/JPEG 프리페치 (0-50%) ====================
+      const resolution = get().globalResolution
+      if (DEBUG_STORE) console.log(`[MultiViewer] Phase 1: Batch API prefetch for slot ${slotId}, resolution=${resolution}`)
 
       await prefetchAllRenderedFrames(
         studyInstanceUid,
@@ -738,7 +749,8 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         // onFrameLoaded 콜백: loadedFrames 업데이트 (Progressive Playback)
         (frameIndex) => {
           get().markFrameLoaded(slotId, frameIndex)
-        }
+        },
+        resolution
       )
 
       if (DEBUG_STORE) console.log(`[MultiViewer] Phase 1 complete: PNG data cached for slot ${slotId}`)
@@ -769,7 +781,8 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
                   studyInstanceUid,
                   seriesInstanceUid,
                   sopInstanceUid,
-                  frameIndex // 0-based frame number
+                  frameIndex, // 0-based frame number
+                  resolution
                 )
 
                 return imageLoader

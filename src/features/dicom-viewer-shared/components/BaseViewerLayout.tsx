@@ -41,8 +41,10 @@ export interface BaseViewerLayoutProps<T extends BaseInstanceInfo> {
   playableCount: number
   totalCount: number
 
-  // Store 상태 (FPS)
+  // Store 상태 (FPS, Resolution)
   globalFps: number
+  /** Resolution 선택 (512=PNG, 256=JPEG, 128=JPEG) */
+  globalResolution?: number
 
   // 핸들러
   onLayoutChange: (layout: GridLayout) => void
@@ -50,6 +52,7 @@ export interface BaseViewerLayoutProps<T extends BaseInstanceInfo> {
   onThumbnailClick: (index: number) => void
   onFilterChange: (filter: InstanceFilter) => void
   onFpsChange: (fps: number) => void
+  onResolutionChange?: (resolution: number) => void
   onPlayAll: () => void
   onPauseAll: () => void
   onStopAll: () => void
@@ -80,11 +83,13 @@ export function BaseViewerLayout<T extends BaseInstanceInfo>({
   playableCount,
   totalCount,
   globalFps,
+  globalResolution,
   onLayoutChange,
   onSlotClick,
   onThumbnailClick,
   onFilterChange,
   onFpsChange,
+  onResolutionChange,
   onPlayAll,
   onPauseAll,
   onStopAll,
@@ -157,6 +162,8 @@ export function BaseViewerLayout<T extends BaseInstanceInfo>({
       <ViewerFooter
         globalFps={globalFps}
         onFpsChange={onFpsChange}
+        globalResolution={globalResolution}
+        onResolutionChange={onResolutionChange}
         onPlayAll={onPlayAll}
         onPauseAll={onPauseAll}
         onStopAll={onStopAll}

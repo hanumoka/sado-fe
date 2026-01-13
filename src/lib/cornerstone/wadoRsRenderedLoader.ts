@@ -44,15 +44,17 @@ interface WadoRsRenderedImageId {
   seriesInstanceUid: string
   sopInstanceUid: string
   frameNumber: number // 0-based
+  resolution?: number // 512/256/128 (optional, default: 512)
 }
 
 /**
  * imageId 파싱
- * @param imageId 'wadors-rendered:studyUid:seriesUid:instanceUid:frameNumber'
+ * @param imageId 'wadors-rendered:studyUid:seriesUid:instanceUid:frameNumber' 또는
+ *                'wadors-rendered:studyUid:seriesUid:instanceUid:frameNumber:resolution'
  */
 function parseImageId(imageId: string): WadoRsRenderedImageId {
   const parts = imageId.split(':')
-  // 'wadors-rendered' : 'studyUid' : 'seriesUid' : 'instanceUid' : 'frameNumber'
+  // 'wadors-rendered' : 'studyUid' : 'seriesUid' : 'instanceUid' : 'frameNumber' [: 'resolution']
   if (parts.length < 5) {
     throw new Error(`Invalid wadors-rendered imageId format: ${imageId}`)
   }
@@ -61,6 +63,7 @@ function parseImageId(imageId: string): WadoRsRenderedImageId {
     seriesInstanceUid: parts[2],
     sopInstanceUid: parts[3],
     frameNumber: parseInt(parts[4], 10),
+    resolution: parts[5] ? parseInt(parts[5], 10) : undefined,
   }
 }
 
@@ -212,13 +215,13 @@ async function loadImageAsync(imageId: string): Promise<Types.IImage> {
  * 네트워크에서 실제 이미지 로드 (내부 함수)
  */
 async function loadImageFromNetwork(imageId: string): Promise<Types.IImage> {
-  const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber } =
+  const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber, resolution } =
     parseImageId(imageId)
 
-  if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Parsed imageId:', { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber })
+  if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Parsed imageId:', { studyInstanceUid, seriesInstanceUid, sopInstanceUid, frameNumber, resolution })
 
   // WADO-RS Rendered API 호출 (frameNumber는 0-based이므로 +1 필요)
-  if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Calling getRenderedFrame for frame:', frameNumber + 1)
+  if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Calling getRenderedFrame for frame:', frameNumber + 1, 'resolution:', resolution)
 
   let blob: Blob
   try {
@@ -226,7 +229,8 @@ async function loadImageFromNetwork(imageId: string): Promise<Types.IImage> {
       studyInstanceUid,
       seriesInstanceUid,
       sopInstanceUid,
-      frameNumber + 1 // API는 1-based
+      frameNumber + 1, // API는 1-based
+      resolution
     )
     if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Blob received:', { size: blob.size, type: blob.type })
   } catch (error) {
@@ -425,14 +429,17 @@ export function registerWadoRsRenderedLoader(): void {
  * @param seriesInstanceUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 0-based 프레임 번호
+ * @param resolution 사전렌더링 해상도 (512/256/128, optional)
  */
 export function createWadoRsRenderedImageId(
   studyInstanceUid: string,
   seriesInstanceUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  resolution?: number
 ): string {
-  return `${SCHEME}:${studyInstanceUid}:${seriesInstanceUid}:${sopInstanceUid}:${frameNumber}`
+  const base = `${SCHEME}:${studyInstanceUid}:${seriesInstanceUid}:${sopInstanceUid}:${frameNumber}`
+  return resolution && resolution !== 512 ? `${base}:${resolution}` : base
 }
 
 /**
@@ -441,17 +448,19 @@ export function createWadoRsRenderedImageId(
  * @param seriesInstanceUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param numberOfFrames 총 프레임 수
+ * @param resolution 사전렌더링 해상도 (512/256/128, optional)
  */
 export function createWadoRsRenderedImageIds(
   studyInstanceUid: string,
   seriesInstanceUid: string,
   sopInstanceUid: string,
-  numberOfFrames: number
+  numberOfFrames: number,
+  resolution?: number
 ): string[] {
   const imageIds: string[] = []
   for (let i = 0; i < numberOfFrames; i++) {
     imageIds.push(
-      createWadoRsRenderedImageId(studyInstanceUid, seriesInstanceUid, sopInstanceUid, i)
+      createWadoRsRenderedImageId(studyInstanceUid, seriesInstanceUid, sopInstanceUid, i, resolution)
     )
   }
   return imageIds

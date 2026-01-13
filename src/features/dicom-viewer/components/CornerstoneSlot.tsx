@@ -86,6 +86,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
 
   // 전역 상태 및 액션 (slot은 위에서 이미 선언됨)
   const globalFps = useCornerstoneMultiViewerStore((state) => state.globalFps)
+  const globalResolution = useCornerstoneMultiViewerStore((state) => state.globalResolution)
   const allThumbnailsLoaded = useCornerstoneMultiViewerStore((state) => state.allThumbnailsLoaded)
   const assignInstanceToSlot = useCornerstoneMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useCornerstoneMultiViewerStore((state) => state.preloadSlotFrames)
@@ -220,12 +221,13 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
         })
       }
 
-      // WADO-RS Rendered imageIds 생성
+      // WADO-RS Rendered imageIds 생성 (resolution 포함)
       const imageIds = createWadoRsRenderedImageIds(
         studyInstanceUid,
         seriesInstanceUid,
         sopInstanceUid,
-        numberOfFrames
+        numberOfFrames,
+        globalResolution
       )
 
       try {
@@ -283,7 +285,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     return () => {
       cineAnimationManager.unregisterViewport(slotId)
     }
-  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId])  // isViewportReady 추가: viewport 생성 후 stack 로드
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, globalResolution])  // globalResolution 추가: resolution 변경 시 stack 재로드
 
   // ==================== 자동 프리로드 ====================
   // Phase 2: 썸네일 로딩 완료 후 프리로드 시작 (썸네일 우선 전략)

@@ -29,15 +29,23 @@ const API_OPTIONS: { value: ApiType; label: string; description: string }[] = [
 
 const FPS_OPTIONS = [10, 15, 20, 25, 30, 60]
 
+const RESOLUTION_OPTIONS = [
+  { value: 512, label: '512px (PNG)' },
+  { value: 256, label: '256px (JPEG)' },
+  { value: 128, label: '128px (JPEG)' },
+]
+
 export function CornerstoneGlobalControls() {
   const {
     layout,
     apiType,
     globalFps,
+    globalResolution,
     slots,
     setLayout,
     setApiType,
     setGlobalFps,
+    setGlobalResolution,
     playAll,
     pauseAll,
     clearAllSlots,
@@ -99,6 +107,22 @@ export function CornerstoneGlobalControls() {
             {FPS_OPTIONS.map((fps) => (
               <option key={fps} value={fps}>
                 {fps}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Resolution 선택 */}
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400 text-sm">Resolution:</span>
+          <select
+            value={globalResolution}
+            onChange={(e) => setGlobalResolution(parseInt(e.target.value, 10))}
+            className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {RESOLUTION_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>

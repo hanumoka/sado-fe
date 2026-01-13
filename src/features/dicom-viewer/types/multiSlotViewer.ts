@@ -83,6 +83,8 @@ export interface CornerstoneMultiViewerState {
   apiType: ApiType
   /** 전역 FPS 설정 */
   globalFps: number
+  /** 전역 해상도 설정 (512=PNG, 256=JPEG, 128=JPEG) */
+  globalResolution: number
   /** 슬롯 상태 (최대 16개) */
   slots: Record<number, CornerstoneSlotState>
   /** 사용 가능한 인스턴스 목록 */

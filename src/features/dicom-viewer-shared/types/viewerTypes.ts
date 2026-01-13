@@ -195,6 +195,9 @@ export interface ViewerHeaderProps {
 export interface ViewerFooterProps {
   globalFps: number
   onFpsChange: (fps: number) => void
+  /** Resolution 선택 (512=PNG, 256=JPEG, 128=JPEG) */
+  globalResolution?: number
+  onResolutionChange?: (resolution: number) => void
   onPlayAll: () => void
   onPauseAll: () => void
   onStopAll: () => void

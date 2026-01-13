@@ -39,6 +39,8 @@ export default function DicomViewerPage() {
   const {
     globalFps,
     setGlobalFps,
+    globalResolution,
+    setGlobalResolution,
     setLayout: setStoreLayout,
     assignInstanceToSlot,
     playAll,
@@ -206,6 +208,8 @@ export default function DicomViewerPage() {
       onThumbnailClick={handleThumbnailClick}
       onFilterChange={setInstanceFilter}
       onFpsChange={setGlobalFps}
+      globalResolution={globalResolution}
+      onResolutionChange={setGlobalResolution}
       onPlayAll={playAll}
       onPauseAll={pauseAll}
       onStopAll={stopAll}

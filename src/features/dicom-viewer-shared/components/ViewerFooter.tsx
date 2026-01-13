@@ -12,9 +12,17 @@ import { VIEWER_THEMES } from '../types/viewerTypes'
 
 const FPS_OPTIONS = [15, 30, 60]
 
+const RESOLUTION_OPTIONS = [
+  { value: 512, label: '512px' },
+  { value: 256, label: '256px' },
+  { value: 128, label: '128px' },
+]
+
 export function ViewerFooter({
   globalFps,
   onFpsChange,
+  globalResolution,
+  onResolutionChange,
   onPlayAll,
   onPauseAll,
   onStopAll,
@@ -60,8 +68,9 @@ export function ViewerFooter({
           </div>
         )}
 
-        {/* 오른쪽: FPS 설정 + 뷰어 타입 표시 */}
+        {/* 오른쪽: FPS + Resolution 설정 + 뷰어 타입 표시 */}
         <div className="flex items-center gap-4">
+          {/* FPS 선택 */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-400">FPS:</span>
             {FPS_OPTIONS.map((fps) => (
@@ -78,6 +87,28 @@ export function ViewerFooter({
               </button>
             ))}
           </div>
+
+          {/* Resolution 선택 */}
+          {globalResolution !== undefined && onResolutionChange && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Resolution:</span>
+              {RESOLUTION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => onResolutionChange(opt.value)}
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                    globalResolution === opt.value
+                      ? `${theme.bgClass} text-white`
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 뷰어 타입 표시 */}
           <span className={`text-xs ${theme.textClass} font-medium`}>
             {displayName}
           </span>

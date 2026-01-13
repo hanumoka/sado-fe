@@ -9,33 +9,30 @@
  * 핵심 원칙:
  * - PNG/JPEG ArrayBuffer를 캐싱
  * - HTTP 요청을 캐시된 데이터로 대체하여 네트워크 최적화
+ *
+ * 성능 최적화 (2026-01-13):
+ * - LRUHeapCache 사용으로 O(N log N) → O(log N) 캐시 작업
+ * - URL 정규화 캐시 크기 제한 (10,000개)
  */
 
 import { formatBytes } from '@/lib/utils'
+import { LRUHeapCache } from '@/lib/utils/minHeap'
 
 // 디버그 로그 플래그
 const DEBUG_CACHE = false
 
-// 캐시 저장소 (정규화된 URL → ArrayBuffer)
-const renderedCache = new Map<string, ArrayBuffer>()
+// 최대 캐시 크기 (500MB)
+const MAX_CACHE_SIZE = 500 * 1024 * 1024
+
+// LRU 캐시 (MinHeap 기반 - O(log N) eviction)
+const renderedCache = new LRUHeapCache<string, ArrayBuffer>({
+  maxBytes: MAX_CACHE_SIZE,
+})
 
 // URL 정규화 캐시 (원본 URL → 정규화된 경로)
 // new URL() 생성 비용을 줄이기 위해 캐싱
 const normalizedUrlCache = new Map<string, string>()
-
-// 캐시 항목 메타데이터 (LRU 관리용)
-interface CacheEntry {
-  url: string
-  size: number
-  timestamp: number
-}
-const cacheMetadata: CacheEntry[] = []
-
-// 최대 캐시 크기 (500MB)
-const MAX_CACHE_SIZE = 500 * 1024 * 1024
-
-// 현재 캐시 크기
-let currentCacheSize = 0
+const MAX_URL_CACHE_SIZE = 10000
 
 // 캐시 히트/미스 통계
 let cacheHits = 0
@@ -73,7 +70,19 @@ function normalizeUrlToPath(url: string): string {
     normalized = url
   }
 
-  // 캐시에 저장 (URL 정규화 캐시는 크기 제한 없음 - 문자열만 저장하므로 메모리 영향 적음)
+  // URL 캐시 크기 제한 (10,000개 초과 시 절반 삭제)
+  if (normalizedUrlCache.size >= MAX_URL_CACHE_SIZE) {
+    const entries = [...normalizedUrlCache.entries()]
+    // 앞쪽 절반 삭제 (오래된 항목)
+    const deleteCount = Math.floor(MAX_URL_CACHE_SIZE / 2)
+    for (let i = 0; i < deleteCount; i++) {
+      normalizedUrlCache.delete(entries[i][0])
+    }
+    if (DEBUG_CACHE) {
+      console.log(`[RenderedCache] URL cache trimmed: deleted ${deleteCount} entries`)
+    }
+  }
+
   normalizedUrlCache.set(url, normalized)
   return normalized
 }
@@ -89,25 +98,17 @@ export function cacheRenderedFrame(url: string, data: ArrayBuffer): void {
 
   if (renderedCache.has(normalizedKey)) {
     if (DEBUG_CACHE) {
-      if (DEBUG_CACHE) console.log(`[RenderedCache] Skip caching (already exists): ${normalizedKey}`)
+      console.log(`[RenderedCache] Skip caching (already exists): ${normalizedKey}`)
     }
     return
   }
 
-  enforceMemoryLimit(data.byteLength)
-
-  renderedCache.set(normalizedKey, data)
-  currentCacheSize += data.byteLength
-
-  cacheMetadata.push({
-    url: normalizedKey,
-    size: data.byteLength,
-    timestamp: Date.now(),
-  })
+  // LRUHeapCache handles eviction automatically with O(log N) performance
+  renderedCache.set(normalizedKey, data, data.byteLength)
 
   if (DEBUG_CACHE) {
     console.log(
-      `[RenderedCache] Cached: ${normalizedKey} (${formatBytes(data.byteLength)}, total: ${formatBytes(currentCacheSize)})`
+      `[RenderedCache] Cached: ${normalizedKey} (${formatBytes(data.byteLength)}, total: ${formatBytes(renderedCache.bytes)})`
     )
   }
 }
@@ -120,26 +121,20 @@ export function cacheRenderedFrame(url: string, data: ArrayBuffer): void {
  */
 export function getCachedRenderedFrame(url: string): ArrayBuffer | undefined {
   const normalizedKey = normalizeUrlToPath(url)
+  // LRUHeapCache.get() automatically updates timestamp (LRU) with O(log N)
   const data = renderedCache.get(normalizedKey)
 
   if (data) {
     cacheHits++
     if (DEBUG_CACHE) {
-      if (DEBUG_CACHE) console.log(`[RenderedCache] Cache HIT: ${normalizedKey}`)
+      console.log(`[RenderedCache] Cache HIT: ${normalizedKey}`)
     }
-
-    // LRU: 타임스탬프 업데이트
-    const metaIndex = cacheMetadata.findIndex((m) => m.url === normalizedKey)
-    if (metaIndex !== -1) {
-      cacheMetadata[metaIndex].timestamp = Date.now()
-    }
-
     return data
   }
 
   cacheMisses++
   if (DEBUG_CACHE) {
-    if (DEBUG_CACHE) console.log(`[RenderedCache] Cache MISS: ${normalizedKey}`)
+    console.log(`[RenderedCache] Cache MISS: ${normalizedKey}`)
   }
   return undefined
 }
@@ -160,14 +155,12 @@ export function hasRenderedFrame(url: string): boolean {
  */
 export function clearRenderedCache(): void {
   renderedCache.clear()
-  cacheMetadata.length = 0
-  currentCacheSize = 0
   cacheHits = 0
   cacheMisses = 0
   normalizedUrlCache.clear()
 
   if (DEBUG_CACHE) {
-    if (DEBUG_CACHE) console.log('[RenderedCache] Cache cleared')
+    console.log('[RenderedCache] Cache cleared')
   }
 }
 
@@ -177,29 +170,12 @@ export function clearRenderedCache(): void {
  * @param sopInstanceUid SOP Instance UID
  */
 export function clearInstanceRenderedCache(sopInstanceUid: string): void {
-  const urlsToDelete: string[] = []
+  const deletedCount = renderedCache.deleteMatching(
+    (url) => url.includes(`/instances/${sopInstanceUid}/`)
+  )
 
-  for (const url of renderedCache.keys()) {
-    if (url.includes(`/instances/${sopInstanceUid}/`)) {
-      urlsToDelete.push(url)
-    }
-  }
-
-  for (const url of urlsToDelete) {
-    const data = renderedCache.get(url)
-    if (data) {
-      currentCacheSize -= data.byteLength
-    }
-    renderedCache.delete(url)
-
-    const metaIndex = cacheMetadata.findIndex((m) => m.url === url)
-    if (metaIndex !== -1) {
-      cacheMetadata.splice(metaIndex, 1)
-    }
-  }
-
-  if (DEBUG_CACHE) {
-    if (DEBUG_CACHE) console.log(`[RenderedCache] Cleared ${urlsToDelete.length} frames for instance: ${sopInstanceUid}`)
+  if (DEBUG_CACHE && deletedCount > 0) {
+    console.log(`[RenderedCache] Cleared ${deletedCount} frames for instance: ${sopInstanceUid}`)
   }
 }
 
@@ -218,7 +194,7 @@ export function getRenderedCacheStats(): {
   const hitRate = totalRequests > 0 ? (cacheHits / totalRequests) * 100 : 0
 
   return {
-    size: currentCacheSize,
+    size: renderedCache.bytes,
     entries: renderedCache.size,
     maxSize: MAX_CACHE_SIZE,
     hitRate: Math.round(hitRate * 100) / 100,
@@ -233,32 +209,5 @@ export function getRenderedCacheStats(): {
 export function resetRenderedCacheStats(): void {
   cacheHits = 0
   cacheMisses = 0
-}
-
-/**
- * 메모리 제한 적용 (LRU 방식으로 오래된 항목 제거)
- */
-function enforceMemoryLimit(newDataSize: number): void {
-  if (currentCacheSize + newDataSize <= MAX_CACHE_SIZE) {
-    return
-  }
-
-  cacheMetadata.sort((a, b) => a.timestamp - b.timestamp)
-
-  const targetSize = MAX_CACHE_SIZE - newDataSize
-  let evictedCount = 0
-
-  while (currentCacheSize > targetSize && cacheMetadata.length > 0) {
-    const oldest = cacheMetadata.shift()
-    if (oldest) {
-      renderedCache.delete(oldest.url)
-      currentCacheSize -= oldest.size
-      evictedCount++
-    }
-  }
-
-  if (DEBUG_CACHE && evictedCount > 0) {
-    if (DEBUG_CACHE) console.log(`[RenderedCache] Evicted ${evictedCount} entries to free memory`)
-  }
 }
 

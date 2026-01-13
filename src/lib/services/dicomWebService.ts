@@ -12,7 +12,13 @@
  */
 
 import { getTenantId } from '../tenantStore'
-import { parseMultipartFrames, parseMultipartRenderedFrames, type ParsedFrame } from '../utils/multipartParser'
+import {
+  parseMultipartFrames,
+  parseMultipartFramesWithMetadata,
+  parseMultipartRenderedFrames,
+  type ParsedFrame,
+  type ParsedFrameWithMetadata,
+} from '../utils/multipartParser'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_SERVICE = false
@@ -470,7 +476,19 @@ export async function getRenderedFrame(
     })
 
     if (!response.ok) {
-      throw new Error(`WADO-RS getRenderedFrame failed: ${response.status}`)
+      // 에러 응답 바디 캡처 (디버깅용)
+      let errorBody = ''
+      try {
+        errorBody = await response.text()
+      } catch {
+        errorBody = '(unable to read error body)'
+      }
+      console.error('[dicomWebService] getRenderedFrame error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorBody,
+      })
+      throw new Error(`WADO-RS getRenderedFrame failed: ${response.status} - ${errorBody}`)
     }
 
     const blob = await response.blob()
@@ -663,6 +681,83 @@ export async function retrieveFrameBatch(
 
   // Multipart 응답 파싱
   return parseMultipartFrames(response)
+}
+
+/**
+ * 프레임 조회 옵션
+ */
+export interface FrameRetrieveOptions {
+  /**
+   * 압축 데이터 유지 요청 여부
+   * - true: 서버가 압축 데이터를 그대로 반환 (클라이언트 디코딩 필요)
+   * - false: 서버가 디코딩하여 raw pixels 반환 (기본값)
+   */
+  preferCompressed?: boolean
+}
+
+/**
+ * WADO-RS: 다중 프레임 배치 조회 (메타데이터 포함)
+ *
+ * 단일 HTTP 요청으로 여러 프레임의 PixelData를 조회합니다.
+ * Content-Type과 Transfer Syntax 정보를 포함하여 반환합니다.
+ *
+ * @param studyUid Study Instance UID
+ * @param seriesUid Series Instance UID
+ * @param sopInstanceUid SOP Instance UID
+ * @param frameNumbers 프레임 번호 배열 (1-based)
+ * @param options 조회 옵션 (preferCompressed: 압축 유지 요청)
+ * @returns Map<프레임번호, ParsedFrameWithMetadata>
+ *
+ * @example
+ * // 압축 데이터 요청
+ * const frames = await retrieveFrameBatchWithMetadata(
+ *   studyUid, seriesUid, sopInstanceUid, [1,2,3],
+ *   { preferCompressed: true }
+ * )
+ * const frame1 = frames.get(1)
+ * if (frame1.contentType === 'image/jp2') {
+ *   // 클라이언트에서 JPEG 2000 디코딩 필요
+ * }
+ */
+export async function retrieveFrameBatchWithMetadata(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumbers: number[],
+  options?: FrameRetrieveOptions
+): Promise<Map<number, ParsedFrameWithMetadata>> {
+  if (frameNumbers.length === 0) {
+    return new Map()
+  }
+
+  // Accept 헤더 결정
+  // preferCompressed=true: 압축 포맷 우선 요청 (image/jp2), 폴백으로 raw pixels
+  // preferCompressed=false (기본): raw pixels만 요청
+  const acceptHeader = options?.preferCompressed
+    ? 'multipart/related; type="image/jp2", multipart/related; type="application/octet-stream"'
+    : 'multipart/related; type="application/octet-stream"'
+
+  const url = getFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers)
+
+  if (DEBUG_SERVICE) {
+    console.log('[DicomWebService] retrieveFrameBatchWithMetadata:', {
+      url,
+      frameNumbers,
+      preferCompressed: options?.preferCompressed,
+      acceptHeader,
+    })
+  }
+
+  const response = await fetch(url, {
+    headers: getDicomWebHeaders(acceptHeader),
+  })
+
+  if (!response.ok) {
+    throw new Error(`WADO-RS retrieveFrameBatchWithMetadata failed: ${response.status}`)
+  }
+
+  // Multipart 응답 파싱 (메타데이터 포함)
+  return parseMultipartFramesWithMetadata(response)
 }
 
 /**

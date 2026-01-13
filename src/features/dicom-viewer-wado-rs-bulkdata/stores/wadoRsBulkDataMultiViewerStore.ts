@@ -20,7 +20,7 @@ import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoRsBulkDataImageId } from '../utils/wadoRsBulkDataImageIdHelper'
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
-import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
+import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
@@ -165,6 +165,9 @@ type WadoRsBulkDataMultiViewerStore = WadoRsBulkDataMultiViewerState & WadoRsBul
 
 /**
  * 프리로드 완료 대기 (폴링 방식)
+ *
+ * CRITICAL: playAll()에서 startSlotPreload()를 먼저 호출한 후 이 함수를 호출해야 함
+ * isPreloading=true가 설정된 상태에서만 올바르게 동작함
  */
 async function waitForPreloadComplete(
   slotId: number,
@@ -178,22 +181,22 @@ async function waitForPreloadComplete(
     const checkPreload = () => {
       const slot = get().slots[slotId]
 
+      // 프리로드 완료됨
       if (slot?.isPreloaded) {
         resolve()
         return
       }
 
-      if (!slot?.isPreloading && !slot?.isPreloaded) {
-        resolve()
-        return
-      }
-
+      // 타임아웃 체크
       if (Date.now() - startTime > timeout) {
         if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
         resolve()
         return
       }
 
+      // 아직 프리로드 중 - 계속 폴링
+      // NOTE: !isPreloading && !isPreloaded 조건 제거함 (race condition 유발)
+      // playAll()에서 startSlotPreload()를 먼저 호출하므로 isPreloading=true가 보장됨
       setTimeout(checkPreload, pollInterval)
     }
 
@@ -214,6 +217,34 @@ function getBatchSizeForLayout(layout: WadoRsBulkDataGridLayout): number {
       return 3
     case '4x4':
       return 2
+    default:
+      return 4
+  }
+}
+
+/**
+ * 레이아웃에 따른 동시 프리로드 슬롯 수 결정
+ *
+ * 캐시 크기 제한 (500MB)으로 인해 너무 많은 슬롯이 동시에 프리로드하면
+ * LRU eviction으로 먼저 캐시된 슬롯의 데이터가 제거됨.
+ *
+ * 4x4 레이아웃에서 16개 슬롯이 동시에 프리로드하면:
+ * - 각 슬롯 100프레임 × 2MB = 200MB
+ * - 16슬롯 × 200MB = 3.2GB >> 500MB 캐시 제한
+ * - 결과: 캐시 eviction → 캐시 미스 → 개별 HTTP 요청 발생
+ *
+ * 해결: 동시 프리로드 슬롯 수를 제한하여 캐시 경쟁 방지
+ */
+function getConcurrentPreloadsForLayout(layout: WadoRsBulkDataGridLayout): number {
+  switch (layout) {
+    case '1x1':
+      return 1 // 1개 슬롯만 있으므로 1
+    case '2x2':
+      return 4 // 4개 슬롯 동시 가능 (캐시 여유)
+    case '3x3':
+      return 3 // 9개 슬롯이므로 3개씩 (3배치)
+    case '4x4':
+      return 4 // 16개 슬롯이므로 4개씩 (4배치) - 캐시 경쟁 최소화
     default:
       return 4
   }
@@ -565,48 +596,73 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
-    // 2. 모든 슬롯 프리로드 병렬 시작 (백그라운드)
-    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting parallel preload for ${multiframeSlotIds.length} slots`)
+    // 2. 레이아웃별 동시 프리로드 슬롯 수 결정
+    // 4x4에서 16개 슬롯이 동시에 프리로드하면 캐시 eviction 발생 (500MB 제한)
+    // 동시 프리로드 슬롯 수를 제한하여 캐시 경쟁 방지
+    const maxConcurrentPreloads = getConcurrentPreloadsForLayout(layout)
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload for ${multiframeSlotIds.length} slots (max concurrent: ${maxConcurrentPreloads})`)
 
-    for (const slotId of multiframeSlotIds) {
+    // 프리로드가 필요한 슬롯 필터링
+    const slotsNeedingPreload = multiframeSlotIds.filter((slotId) => {
       const slot = get().slots[slotId]
-      // 이미 완료되었거나 진행 중이면 스킵
-      if (slot?.isPreloaded || slot?.isPreloading) {
-        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloaded/preloading, skipping`)
-        continue
+      return !slot?.isPreloaded && !slot?.isPreloading
+    })
+
+    // 3. 동시성 제한하여 프리로드 실행 (배치 단위)
+    // 캐시 eviction 방지: 한 번에 maxConcurrentPreloads개 슬롯만 프리로드
+    for (let i = 0; i < slotsNeedingPreload.length; i += maxConcurrentPreloads) {
+      const batch = slotsNeedingPreload.slice(i, i + maxConcurrentPreloads)
+
+      // 배치 내 슬롯들의 isPreloading=true 설정 (동기)
+      for (const slotId of batch) {
+        get().startSlotPreload(slotId)
       }
 
-      // 백그라운드 프리로드 시작 (await 없음!)
-      get().preloadSlotFrames(slotId).catch((error) => {
-        console.warn(`[WadoRsBulkDataViewer] Background preload failed for slot ${slotId}:`, error)
-      })
+      // 배치 내 슬롯들 프리로드 시작 및 완료 대기
+      await Promise.all(
+        batch.map(async (slotId) => {
+          try {
+            await get().preloadSlotFrames(slotId)
+          } catch (error) {
+            console.warn(`[WadoRsBulkDataViewer] Preload failed for slot ${slotId}:`, error)
+          }
+        })
+      )
+
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Preload batch completed: slots ${batch.join(', ')}`)
     }
 
-    // 3. 모든 슬롯 프리로드 완료 대기 (병렬)
+    // 4. 이미 프리로드된 슬롯들도 포함하여 완료 확인
     await Promise.all(
       multiframeSlotIds.map(async (slotId) => {
         const slot = get().slots[slotId]
         if (slot?.isPreloaded) return
-
-        // 프리로드 완료 대기
         await waitForPreloadComplete(slotId, get)
-
-        // 해당 슬롯 즉시 재생 시작
-        set((state) => ({
-          slots: {
-            ...state.slots,
-            [slotId]: {
-              ...state.slots[slotId],
-              isPlaying: true,
-            },
-          },
-        }))
-
-        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} started playing`)
       })
     )
 
-    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] playAll completed for ${multiframeSlotIds.length} slots`)
+    // 5. 모든 슬롯 프리로드 완료 후 일괄 재생 시작
+    // CRITICAL: 개별 슬롯이 즉시 재생하면 다른 슬롯의 프리로드 중 캐시 eviction 발생 가능
+    // 모든 프리로드 완료 후 일괄 재생하여 캐시 안정성 확보
+    const updatedSlots: Record<number, WadoRsBulkDataSlotState> = {}
+    for (const slotId of multiframeSlotIds) {
+      const slot = get().slots[slotId]
+      if (slot) {
+        updatedSlots[slotId] = {
+          ...slot,
+          isPlaying: true,
+        }
+      }
+    }
+
+    set((state) => ({
+      slots: {
+        ...state.slots,
+        ...updatedSlots,
+      },
+    }))
+
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] playAll completed: ${multiframeSlotIds.length} slots started playing`)
   },
 
   pauseAll: () => {
@@ -680,8 +736,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
-    if (slot.isPreloading || slot.isPreloaded) {
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloading or preloaded`)
+    // 이미 완료된 경우만 스킵 (isPreloading 체크 제거 - playAll()에서 먼저 설정함)
+    if (slot.isPreloaded) {
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Slot ${slotId} already preloaded`)
       return
     }
 
@@ -691,7 +748,10 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
-    get().startSlotPreload(slotId)
+    // playAll()에서 이미 호출했을 수 있으므로, isPreloading=false인 경우만 호출
+    if (!slot.isPreloading) {
+      get().startSlotPreload(slotId)
+    }
 
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
@@ -707,6 +767,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       // HTTP 요청 90% 절감: 100프레임 = 10회 요청 (vs 기존 100회)
       if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1: Prefetching ${numberOfFrames} frames via batch API (batch size: ${PREFETCH_BATCH_SIZE})`)
 
+      // 메타데이터 가져오기 (압축 데이터 디코딩용)
+      const pixelMetadata = getCachedMetadata(sopInstanceUid)
+
       await prefetchAllFrames(
         studyInstanceUid,
         seriesInstanceUid,
@@ -717,6 +780,11 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
           // 프리페치 진행률: 0% ~ 50%
           const progress = Math.round((loaded / total) * 50)
           get().updateSlotPreloadProgress(slotId, progress)
+        },
+        undefined, // onFrameLoaded
+        {
+          preferCompressed: false,
+          metadata: pixelMetadata,
         }
       )
 

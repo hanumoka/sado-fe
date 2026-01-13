@@ -5,9 +5,13 @@
  * frameNumber는 0-based (API 호출 시 +1 변환)
  *
  * mini-pacs-poc 참고
+ *
+ * 성능 최적화 (2026-01-13):
+ * - LRUHeapCache 사용으로 O(N log N) → O(log N) 캐시 작업
  */
 import { imageLoader, metaData, type Types } from '@cornerstonejs/core'
 import { getRenderedFrame } from '@/lib/services/dicomWebService'
+import { LRUHeapCache } from '@/lib/utils/minHeap'
 
 const SCHEME = 'wadors-rendered'
 
@@ -22,21 +26,15 @@ const imageMetadataCache = new Map<string, {
 }>()
 
 // ==================== 이미지 캐시 (재요청 방지) ====================
-// imageId → IImage 객체 캐시
-const imageCache = new Map<string, Types.IImage>()
-
-// 캐시 항목 메타데이터 (LRU 관리용)
-interface ImageCacheEntry {
-  imageId: string
-  size: number
-  timestamp: number
-}
-const imageCacheMetadata: ImageCacheEntry[] = []
-
 // 최대 캐시 크기 (200개 항목 또는 300MB)
 const MAX_IMAGE_CACHE_ENTRIES = 200
 const MAX_IMAGE_CACHE_BYTES = 300 * 1024 * 1024
-let currentImageCacheBytes = 0
+
+// LRU 캐시 (MinHeap 기반 - O(log N) eviction)
+const imageCache = new LRUHeapCache<string, Types.IImage>({
+  maxEntries: MAX_IMAGE_CACHE_ENTRIES,
+  maxBytes: MAX_IMAGE_CACHE_BYTES,
+})
 
 // 진행 중인 로드 요청 (중복 요청 방지)
 const pendingLoads = new Map<string, Promise<Types.IImage>>()
@@ -74,19 +72,42 @@ function parseImageId(imageId: string): WadoRsRenderedImageId {
 async function blobToImageData(blob: Blob): Promise<ImageData> {
   if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] blobToImageData START - blob:', { size: blob.size, type: blob.type })
 
+  // 이미지 로드 타임아웃 (30초)
+  const IMAGE_LOAD_TIMEOUT_MS = 30000
+
   return new Promise((resolve, reject) => {
     const img = new Image()
     const objectUrl = URL.createObjectURL(blob)
+    let isSettled = false
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
     if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] blobToImageData - objectUrl created:', objectUrl)
 
     const cleanup = () => {
+      // 타임아웃 클리어
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      // ObjectURL 해제 및 이벤트 핸들러 정리
       URL.revokeObjectURL(objectUrl)
       img.onload = null
       img.onerror = null
       img.src = ''
     }
 
+    // 타임아웃 처리 - ObjectURL 누수 방지
+    timeoutId = setTimeout(() => {
+      if (!isSettled) {
+        isSettled = true
+        cleanup()
+        reject(new Error(`Image load timeout after ${IMAGE_LOAD_TIMEOUT_MS}ms`))
+      }
+    }, IMAGE_LOAD_TIMEOUT_MS)
+
     img.onload = () => {
+      if (isSettled) return // 이미 타임아웃으로 처리됨
+      isSettled = true
       if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] blobToImageData - img.onload fired, size:', img.width, 'x', img.height)
       try {
         const canvas = document.createElement('canvas')
@@ -104,6 +125,11 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
         ctx.drawImage(img, 0, 0)
         const imageData = ctx.getImageData(0, 0, img.width, img.height)
         if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] blobToImageData - ImageData extracted:', imageData.width, 'x', imageData.height)
+
+        // Canvas 메모리 명시적 해제 (대용량 DICOM 이미지 메모리 누수 방지)
+        canvas.width = 0
+        canvas.height = 0
+
         cleanup()
         resolve(imageData)
       } catch (e) {
@@ -114,6 +140,8 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
     }
 
     img.onerror = (e) => {
+      if (isSettled) return // 이미 타임아웃으로 처리됨
+      isSettled = true
       if (DEBUG_LOADER) console.error('[WadoRsRenderedLoader] blobToImageData - img.onerror fired:', e)
       cleanup()
       reject(new Error('Failed to load image from blob'))
@@ -127,6 +155,7 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
 
 /**
  * LRU 방식으로 이미지 캐시에 추가
+ * LRUHeapCache handles eviction automatically with O(log N) performance
  */
 function addToImageCache(imageId: string, image: Types.IImage): void {
   // 이미 캐시에 있으면 스킵
@@ -136,49 +165,11 @@ function addToImageCache(imageId: string, image: Types.IImage): void {
 
   const imageSize = (image as unknown as { sizeInBytes?: number }).sizeInBytes || 0
 
-  // 캐시 크기 제한 확인 및 필요시 오래된 항목 제거
-  enforceImageCacheLimit(imageSize)
+  // LRUHeapCache handles eviction automatically
+  imageCache.set(imageId, image, imageSize)
 
-  // 캐시에 추가
-  imageCache.set(imageId, image)
-  currentImageCacheBytes += imageSize
-
-  imageCacheMetadata.push({
-    imageId,
-    size: imageSize,
-    timestamp: Date.now(),
-  })
-}
-
-/**
- * 이미지 캐시 크기 제한 적용 (LRU 방식)
- */
-function enforceImageCacheLimit(newImageSize: number): void {
-  // 항목 수 제한 확인
-  while (imageCache.size >= MAX_IMAGE_CACHE_ENTRIES && imageCacheMetadata.length > 0) {
-    evictOldestImage()
-  }
-
-  // 바이트 크기 제한 확인
-  while (currentImageCacheBytes + newImageSize > MAX_IMAGE_CACHE_BYTES && imageCacheMetadata.length > 0) {
-    evictOldestImage()
-  }
-}
-
-/**
- * 가장 오래된 이미지 제거
- */
-function evictOldestImage(): void {
-  // 타임스탬프 기준 오름차순 정렬 (오래된 것이 앞에)
-  imageCacheMetadata.sort((a, b) => a.timestamp - b.timestamp)
-
-  const oldest = imageCacheMetadata.shift()
-  if (oldest) {
-    imageCache.delete(oldest.imageId)
-    currentImageCacheBytes -= oldest.size
-    if (DEBUG_LOADER) {
-      console.log('[WadoRsRenderedLoader] Evicted oldest image:', oldest.imageId)
-    }
+  if (DEBUG_LOADER) {
+    console.log(`[WadoRsRenderedLoader] Cached image: ${imageId}, size: ${imageSize}, total: ${imageCache.size}`)
   }
 }
 
@@ -188,7 +179,7 @@ function evictOldestImage(): void {
 async function loadImageAsync(imageId: string): Promise<Types.IImage> {
   if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] loadImageAsync called:', imageId)
 
-  // 1. 캐시 확인
+  // 1. 캐시 확인 (LRUHeapCache.get() automatically updates LRU timestamp)
   const cached = imageCache.get(imageId)
   if (cached) {
     if (DEBUG_LOADER) console.log('[WadoRsRenderedLoader] Cache HIT:', imageId)
@@ -474,8 +465,6 @@ export function createWadoRsRenderedImageIds(
 export function clearImageCache(): void {
   const prevSize = imageCache.size
   imageCache.clear()
-  imageCacheMetadata.length = 0
-  currentImageCacheBytes = 0
   pendingLoads.clear()
   if (DEBUG_LOADER) console.log(`[WadoRsRenderedLoader] Image cache cleared (was ${prevSize} items)`)
 }
@@ -492,7 +481,7 @@ export function getImageCacheStats(): {
 } {
   return {
     entries: imageCache.size,
-    bytes: currentImageCacheBytes,
+    bytes: imageCache.bytes,
     maxEntries: MAX_IMAGE_CACHE_ENTRIES,
     maxBytes: MAX_IMAGE_CACHE_BYTES,
     pendingCount: pendingLoads.size,
@@ -503,26 +492,7 @@ export function getImageCacheStats(): {
  * 특정 인스턴스의 캐시 삭제
  */
 export function clearInstanceCache(sopInstanceUid: string): number {
-  let cleared = 0
-  const keysToDelete: string[] = []
-
-  for (const key of imageCache.keys()) {
-    if (key.includes(sopInstanceUid)) {
-      keysToDelete.push(key)
-    }
-  }
-
-  for (const key of keysToDelete) {
-    imageCache.delete(key)
-    cleared++
-
-    // 메타데이터에서도 삭제
-    const metaIndex = imageCacheMetadata.findIndex((m) => m.imageId === key)
-    if (metaIndex !== -1) {
-      currentImageCacheBytes -= imageCacheMetadata[metaIndex].size
-      imageCacheMetadata.splice(metaIndex, 1)
-    }
-  }
+  const cleared = imageCache.deleteMatching((key) => key.includes(sopInstanceUid))
 
   if (cleared > 0) {
     if (DEBUG_LOADER) console.log(`[WadoRsRenderedLoader] Cleared ${cleared} cached frames for instance: ${sopInstanceUid}`)

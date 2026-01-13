@@ -14,9 +14,17 @@
  * @see https://dicom.nema.org/medical/dicom/2019a/output/chtml/part18/sect_6.5.4.html
  */
 import { cache, type Types, utilities } from '@cornerstonejs/core'
-import { retrieveFrameBatch } from '@/lib/services/dicomWebService'
+import {
+  retrieveFrameBatch,
+  retrieveFrameBatchWithMetadata,
+} from '@/lib/services/dicomWebService'
 import { createWadoRsBulkDataImageId } from './wadoRsBulkDataImageIdHelper'
 import type { DicomPixelMetadata } from './wadoRsBulkDataMetadataProvider'
+import {
+  decodeCompressedFrame,
+  isCompressedContentType,
+  initializeJPEG2000Decoder,
+} from './frameDecoder'
 
 // 디버그 로그 플래그
 const DEBUG_BATCH_LOADER = false
@@ -312,6 +320,18 @@ function createCanvasFromPixelData(
 }
 
 /**
+ * 배치 로드 옵션
+ */
+export interface BatchLoadOptions {
+  /**
+   * 압축 데이터 유지 요청 여부
+   * - true: 서버가 압축 데이터를 그대로 반환 → 클라이언트에서 디코딩
+   * - false (기본): 서버가 디코딩하여 raw pixels 반환
+   */
+  preferCompressed?: boolean
+}
+
+/**
  * 배치 프레임 로드 및 Cornerstone 캐시 주입
  *
  * 단일 HTTP 요청으로 여러 프레임을 로드하고 Cornerstone 캐시에 직접 저장.
@@ -322,6 +342,7 @@ function createCanvasFromPixelData(
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumbers 프레임 번호 배열 (1-based)
  * @param metadata DICOM 픽셀 메타데이터
+ * @param options 로드 옵션 (preferCompressed: 압축 유지 요청)
  * @returns 로드된 프레임 수
  */
 export async function loadAndCacheFrameBatch(
@@ -329,52 +350,162 @@ export async function loadAndCacheFrameBatch(
   seriesUid: string,
   sopInstanceUid: string,
   frameNumbers: number[], // 1-based
-  metadata: DicomPixelMetadata
+  metadata: DicomPixelMetadata,
+  options?: BatchLoadOptions
 ): Promise<number> {
   if (frameNumbers.length === 0) {
     return 0
   }
 
+  const preferCompressed = options?.preferCompressed ?? false
+
   if (DEBUG_BATCH_LOADER) {
-    if (DEBUG_BATCH_LOADER) console.log(
-      `[WadoRsBulkDataBatchLoader] Loading frames ${frameNumbers.join(',')} for ${sopInstanceUid}`
+    console.log(
+      `[WadoRsBulkDataBatchLoader] Loading frames ${frameNumbers.join(',')} for ${sopInstanceUid}`,
+      { preferCompressed }
     )
+  }
+
+  // 압축 데이터 요청 시 디코더 사전 초기화
+  if (preferCompressed) {
+    try {
+      await initializeJPEG2000Decoder()
+    } catch (error) {
+      console.warn('[WadoRsBulkDataBatchLoader] Failed to initialize decoder, falling back to raw pixels:', error)
+      // 폴백: raw pixels 요청
+      return loadAndCacheFrameBatchRaw(studyUid, seriesUid, sopInstanceUid, frameNumbers, metadata)
+    }
   }
 
   // 1. 배치 API로 여러 프레임 로드
+  let cachedCount = 0
+
+  if (preferCompressed) {
+    // 압축 데이터 요청 (메타데이터 포함)
+    const frameDataMap = await retrieveFrameBatchWithMetadata(
+      studyUid, seriesUid, sopInstanceUid, frameNumbers,
+      { preferCompressed: true }
+    )
+
+    if (DEBUG_BATCH_LOADER) {
+      console.log(`[WadoRsBulkDataBatchLoader] Received ${frameDataMap.size} frames with metadata`)
+    }
+
+    // 2. 각 프레임 처리 (필요시 디코딩)
+    for (const [frameNumber, frameData] of frameDataMap) {
+      const imageId = createWadoRsBulkDataImageId(
+        studyUid, seriesUid, sopInstanceUid, frameNumber - 1
+      )
+
+      // 캐시 확인
+      const existingImage = cache.getImageLoadObject(imageId)
+      if (existingImage) {
+        if (DEBUG_BATCH_LOADER) {
+          console.log(`[WadoRsBulkDataBatchLoader] Skip caching (already exists): frame ${frameNumber}`)
+        }
+        cachedCount++
+        continue
+      }
+
+      // Content-Type에 따라 분기 처리
+      let pixelData: ArrayBuffer = frameData.data
+
+      if (isCompressedContentType(frameData.contentType)) {
+        // 압축 데이터 → 클라이언트 디코딩
+        if (DEBUG_BATCH_LOADER) {
+          console.log(`[WadoRsBulkDataBatchLoader] Decoding frame ${frameNumber}:`, {
+            contentType: frameData.contentType,
+            transferSyntax: frameData.transferSyntax,
+            compressedSize: frameData.data.byteLength,
+          })
+        }
+
+        try {
+          pixelData = await decodeCompressedFrame(
+            frameData.data,
+            frameData.contentType,
+            metadata,
+            frameData.transferSyntax
+          )
+
+          if (DEBUG_BATCH_LOADER) {
+            console.log(`[WadoRsBulkDataBatchLoader] Decoded frame ${frameNumber}:`, {
+              decodedSize: pixelData.byteLength,
+              compressionRatio: (frameData.data.byteLength / pixelData.byteLength * 100).toFixed(1) + '%',
+            })
+          }
+        } catch (error) {
+          console.error(`[WadoRsBulkDataBatchLoader] Decoding failed for frame ${frameNumber}:`, error)
+          // 디코딩 실패 시 건너뜀 (또는 서버에서 디코딩된 데이터 재요청 가능)
+          continue
+        }
+      }
+
+      // IImage 변환
+      const image = createImageFromPixelData(imageId, pixelData, metadata)
+
+      // Cornerstone 캐시에 저장
+      cache.putImageLoadObject(imageId, {
+        promise: Promise.resolve(image),
+      })
+
+      cachedCount++
+
+      if (DEBUG_BATCH_LOADER) {
+        console.log(`[WadoRsBulkDataBatchLoader] Cached frame ${frameNumber} as ${imageId}`)
+      }
+    }
+  } else {
+    // 기존 로직: raw pixels 요청
+    cachedCount = await loadAndCacheFrameBatchRaw(
+      studyUid, seriesUid, sopInstanceUid, frameNumbers, metadata
+    )
+  }
+
+  if (DEBUG_BATCH_LOADER) {
+    console.log(
+      `[WadoRsBulkDataBatchLoader] Batch complete: ${cachedCount} frames cached for ${sopInstanceUid}`
+    )
+  }
+
+  return cachedCount
+}
+
+/**
+ * 배치 프레임 로드 (raw pixels 전용, 기존 로직)
+ *
+ * @internal
+ */
+async function loadAndCacheFrameBatchRaw(
+  studyUid: string,
+  seriesUid: string,
+  sopInstanceUid: string,
+  frameNumbers: number[],
+  metadata: DicomPixelMetadata
+): Promise<number> {
   const frameDataMap = await retrieveFrameBatch(studyUid, seriesUid, sopInstanceUid, frameNumbers)
 
   if (DEBUG_BATCH_LOADER) {
-    if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log(`[WadoRsBulkDataBatchLoader] Received ${frameDataMap.size} frames from API`)
+    console.log(`[WadoRsBulkDataBatchLoader] Received ${frameDataMap.size} raw frames from API`)
   }
 
-  // 2. 각 프레임을 IImage로 변환하여 캐시에 저장
   let cachedCount = 0
   for (const [frameNumber, pixelData] of frameDataMap) {
-    // imageId 생성 (0-based frameNumber 사용)
     const imageId = createWadoRsBulkDataImageId(
-      studyUid,
-      seriesUid,
-      sopInstanceUid,
-      frameNumber - 1 // 0-based
+      studyUid, seriesUid, sopInstanceUid, frameNumber - 1
     )
 
-    // 캐시에 이미 있는지 확인 (cornerstoneDICOMImageLoader가 먼저 로드한 경우)
-    // 기존 IImage를 덮어쓰면 GPU 텍스처 초기화 문제 발생
     const existingImage = cache.getImageLoadObject(imageId)
     if (existingImage) {
       if (DEBUG_BATCH_LOADER) {
-        if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log(`[WadoRsBulkDataBatchLoader] Skip caching (already exists): frame ${frameNumber}`)
+        console.log(`[WadoRsBulkDataBatchLoader] Skip caching (already exists): frame ${frameNumber}`)
       }
-      cachedCount++ // 이미 캐시된 것도 카운트
+      cachedCount++
       continue
     }
 
-    // IImage 변환
     const image = createImageFromPixelData(imageId, pixelData, metadata)
 
-    // Cornerstone 캐시에 직접 저장
-    // ImageLoadObject 형식: { promise: Promise<IImage>, cancelFn?: () => void }
     cache.putImageLoadObject(imageId, {
       promise: Promise.resolve(image),
     })
@@ -382,14 +513,8 @@ export async function loadAndCacheFrameBatch(
     cachedCount++
 
     if (DEBUG_BATCH_LOADER) {
-      if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log(`[WadoRsBulkDataBatchLoader] Cached frame ${frameNumber} as ${imageId}`)
+      console.log(`[WadoRsBulkDataBatchLoader] Cached frame ${frameNumber} as ${imageId}`)
     }
-  }
-
-  if (DEBUG_BATCH_LOADER) {
-    if (DEBUG_BATCH_LOADER) console.log(
-      `[WadoRsBulkDataBatchLoader] Batch complete: ${cachedCount} frames cached for ${sopInstanceUid}`
-    )
   }
 
   return cachedCount

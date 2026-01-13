@@ -191,16 +191,25 @@ export function enableRenderedInterceptor(): void {
           // readyState와 response를 직접 설정할 수 없으므로 defineProperty 사용
           const xhr = this
 
-          // 즉시 완료 상태로 설정
+          // 즉시 완료 상태로 설정 (XHR 상태 머신 시뮬레이션)
           setTimeout(() => {
-            Object.defineProperty(xhr, 'readyState', { value: 4, writable: false })
-            Object.defineProperty(xhr, 'status', { value: 200, writable: false })
-            Object.defineProperty(xhr, 'statusText', { value: 'OK (from cache)', writable: false })
-            Object.defineProperty(xhr, 'response', { value: cachedData, writable: false })
-            Object.defineProperty(xhr, 'responseType', { value: 'arraybuffer', writable: false })
-
-            // 이벤트 발생
+            // 상태 2: HEADERS_RECEIVED - 응답 헤더 수신
+            Object.defineProperty(xhr, 'readyState', { value: 2, writable: true, configurable: true })
+            Object.defineProperty(xhr, 'status', { value: 200, writable: true, configurable: true })
+            Object.defineProperty(xhr, 'statusText', { value: 'OK (from cache)', writable: true, configurable: true })
             xhr.dispatchEvent(new Event('readystatechange'))
+
+            // 상태 3: LOADING - 응답 본문 수신 중
+            Object.defineProperty(xhr, 'readyState', { value: 3, writable: true, configurable: true })
+            xhr.dispatchEvent(new Event('readystatechange'))
+
+            // 상태 4: DONE - 완료
+            Object.defineProperty(xhr, 'readyState', { value: 4, writable: false, configurable: true })
+            Object.defineProperty(xhr, 'response', { value: cachedData, writable: false, configurable: true })
+            Object.defineProperty(xhr, 'responseType', { value: 'arraybuffer', writable: false, configurable: true })
+            xhr.dispatchEvent(new Event('readystatechange'))
+
+            // 로드 완료 이벤트
             xhr.dispatchEvent(new ProgressEvent('load'))
             xhr.dispatchEvent(new ProgressEvent('loadend'))
           }, 0)

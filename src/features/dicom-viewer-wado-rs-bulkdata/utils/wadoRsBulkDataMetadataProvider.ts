@@ -161,10 +161,29 @@ async function fetchMetadataFromBackend(
     throw new Error(`Empty metadata response for ${sopInstanceUid}`)
   }
 
-  // DICOM JSON 파싱
+  // DICOM JSON 파싱 - 필수 메타데이터 검증
+  const rows = getDicomValue<number>(dicomJson, '00280010')
+  const columns = getDicomValue<number>(dicomJson, '00280011')
+
+  // 필수 이미지 차원 메타데이터 검증
+  if (!rows || !columns) {
+    console.warn(
+      `[WadoRsBulkDataMetadataProvider] Missing required DICOM dimensions for ${sopInstanceUid}: ` +
+        `Rows=${rows}, Columns=${columns}. Using defaults (512x512).`
+    )
+  }
+
+  // 비정상적인 값 검증
+  if (rows && (rows < 1 || rows > 65535)) {
+    console.warn(`[WadoRsBulkDataMetadataProvider] Invalid Rows value: ${rows}`)
+  }
+  if (columns && (columns < 1 || columns > 65535)) {
+    console.warn(`[WadoRsBulkDataMetadataProvider] Invalid Columns value: ${columns}`)
+  }
+
   const metadata: DicomPixelMetadata = {
-    rows: getDicomValue<number>(dicomJson, '00280010') ?? 512,
-    columns: getDicomValue<number>(dicomJson, '00280011') ?? 512,
+    rows: rows ?? 512,
+    columns: columns ?? 512,
     samplesPerPixel: getDicomValue<number>(dicomJson, '00280002') ?? 1,
     photometricInterpretation: getDicomValue<string>(dicomJson, '00280004') ?? 'MONOCHROME2',
     bitsAllocated: getDicomValue<number>(dicomJson, '00280100') ?? 16,

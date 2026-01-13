@@ -39,17 +39,17 @@ let cacheHits = 0
 let cacheMisses = 0
 
 /**
- * URL을 경로(path)만으로 정규화
+ * URL을 경로(path + query)로 정규화
  *
  * 포트 번호 차이로 인한 캐시 미스를 방지하기 위해
- * 호스트/포트를 제거하고 경로만 사용
+ * 호스트/포트를 제거하고 경로 + 쿼리만 사용
  *
  * @example
  * - "http://localhost:10201/.../frames/1/rendered" → "/dicomweb/.../frames/1/rendered"
- * - "http://localhost:10300/.../frames/1/rendered" → "/dicomweb/.../frames/1/rendered"
+ * - "http://localhost:10201/.../frames/1/rendered?resolution=256" → "/dicomweb/.../frames/1/rendered?resolution=256"
  *
  * @param url 원본 URL
- * @returns 정규화된 경로
+ * @returns 정규화된 경로 (쿼리 파라미터 포함)
  */
 function normalizeUrlToPath(url: string): string {
   // 캐시에서 먼저 조회 (O(1))
@@ -62,7 +62,8 @@ function normalizeUrlToPath(url: string): string {
   try {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       const urlObj = new URL(url)
-      normalized = urlObj.pathname
+      // pathname + search (쿼리 파라미터 포함)로 resolution별 캐시 분리
+      normalized = urlObj.pathname + urlObj.search
     } else {
       normalized = url
     }

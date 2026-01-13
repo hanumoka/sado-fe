@@ -8,7 +8,7 @@
 // ==================== 레이아웃 ====================
 
 /** 그리드 레이아웃 타입 */
-export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4'
+export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
 
 /** 레이아웃 옵션 */
 export interface LayoutOption {
@@ -23,6 +23,7 @@ export const LAYOUT_OPTIONS: LayoutOption[] = [
   { value: '2x2', label: '2×2', slots: 4 },
   { value: '3x3', label: '3×3', slots: 9 },
   { value: '4x4', label: '4×4', slots: 16 },
+  { value: '5x5', label: '5×5', slots: 25 },
 ]
 
 // ==================== 인스턴스 ====================
@@ -39,6 +40,7 @@ export interface BaseInstanceInfo {
   patientName?: string
   modality?: string
   instanceNumber?: number
+  transferSyntaxUid?: string
 }
 
 // ==================== 뷰어 테마 ====================
@@ -191,6 +193,9 @@ export interface ViewerHeaderProps {
   onBack: () => void
 }
 
+/** 해상도 모드 */
+export type ResolutionMode = 'auto' | 'manual'
+
 /** ViewerFooter Props */
 export interface ViewerFooterProps {
   globalFps: number
@@ -198,6 +203,9 @@ export interface ViewerFooterProps {
   /** Resolution 선택 (512=PNG, 256=JPEG, 128=JPEG) */
   globalResolution?: number
   onResolutionChange?: (resolution: number) => void
+  /** Resolution 모드 (auto: 레이아웃별 자동, manual: 수동) */
+  resolutionMode?: ResolutionMode
+  onResolutionModeChange?: (mode: ResolutionMode) => void
   onPlayAll: () => void
   onPauseAll: () => void
   onStopAll: () => void

@@ -11,6 +11,7 @@ import DicomViewerPage from '@/app/pages/DicomViewerPage'
 import WadoRsViewerPage from '@/app/pages/WadoRsViewerPage'
 import WadoUriViewerPage from '@/app/pages/WadoUriViewerPage'
 import MultiSlotViewerPage from '@/app/pages/MultiSlotViewerPage'
+import MjpegViewerPage from '@/app/pages/MjpegViewerPage'
 import NotFoundPage from '@/app/pages/NotFoundPage'
 import SeaweedFSManagePage from '@/app/pages/admin/SeaweedFSManagePage'
 import StorageMonitoringPage from '@/app/pages/admin/StorageMonitoringPage'
@@ -65,6 +66,9 @@ export default function Router() {
 
         {/* Multi-Slot DICOM Viewer (Full Screen - Layout 밖) */}
         <Route path="/multi-viewer" element={<MultiSlotViewerPage />} />
+
+        {/* MJPEG Streaming Viewer POC (Full Screen - Layout 밖) */}
+        <Route path="/viewer/mjpeg" element={<MjpegViewerPage />} />
 
         {/* 404 Not Found */}
         <Route path="*" element={<NotFoundPage />} />

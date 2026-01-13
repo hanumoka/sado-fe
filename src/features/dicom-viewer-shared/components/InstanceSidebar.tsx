@@ -7,12 +7,35 @@
  * - 드래그 앤 드롭 지원
  * - 통계 표시
  */
-import { AlertCircle, Film, Image, Loader2 } from 'lucide-react'
+import { AlertCircle, Film, Image, Loader2, Archive } from 'lucide-react'
 import type {
   BaseInstanceInfo,
   InstanceSidebarProps,
 } from '../types/viewerTypes'
 import { VIEWER_THEMES } from '../types/viewerTypes'
+
+/**
+ * Transfer Syntax UID를 사람이 읽기 쉬운 라벨로 변환
+ */
+function getTransferSyntaxLabel(uid?: string): { label: string; isCompressed: boolean } {
+  if (!uid) return { label: '', isCompressed: false }
+
+  const syntaxMap: Record<string, { label: string; isCompressed: boolean }> = {
+    '1.2.840.10008.1.2': { label: 'Implicit VR', isCompressed: false },
+    '1.2.840.10008.1.2.1': { label: 'Explicit VR', isCompressed: false },
+    '1.2.840.10008.1.2.2': { label: 'Explicit VR BE', isCompressed: false },
+    '1.2.840.10008.1.2.4.50': { label: 'JPEG Baseline', isCompressed: true },
+    '1.2.840.10008.1.2.4.51': { label: 'JPEG Extended', isCompressed: true },
+    '1.2.840.10008.1.2.4.70': { label: 'JPEG Lossless', isCompressed: true },
+    '1.2.840.10008.1.2.4.80': { label: 'JPEG-LS', isCompressed: true },
+    '1.2.840.10008.1.2.4.81': { label: 'JPEG-LS Lossy', isCompressed: true },
+    '1.2.840.10008.1.2.4.90': { label: 'JPEG 2000 LL', isCompressed: true },
+    '1.2.840.10008.1.2.4.91': { label: 'JPEG 2000', isCompressed: true },
+    '1.2.840.10008.1.2.5': { label: 'RLE', isCompressed: true },
+  }
+
+  return syntaxMap[uid] || { label: uid.slice(-8), isCompressed: false }
+}
 
 export function InstanceSidebar<T extends BaseInstanceInfo>({
   filteredInstances,
@@ -172,6 +195,18 @@ export function InstanceSidebar<T extends BaseInstanceInfo>({
                       <p className="text-xs text-gray-500 truncate mt-1">
                         {instance.sopInstanceUid.slice(-12)}...
                       </p>
+                      {/* Transfer Syntax 표시 */}
+                      {instance.transferSyntaxUid && (() => {
+                        const { label, isCompressed } = getTransferSyntaxLabel(instance.transferSyntaxUid)
+                        return (
+                          <p className={`text-xs mt-0.5 flex items-center gap-1 ${
+                            isCompressed ? 'text-green-400' : 'text-gray-500'
+                          }`}>
+                            {isCompressed && <Archive className="h-3 w-3" />}
+                            {label}
+                          </p>
+                        )
+                      })()}
                     </div>
                   </div>
                 </button>

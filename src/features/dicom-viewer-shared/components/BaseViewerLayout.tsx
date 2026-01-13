@@ -16,6 +16,7 @@ import type {
   BaseInstanceInfo,
   GridLayout,
   InstanceFilter,
+  ResolutionMode,
   ViewerLoaderStrategy,
 } from '../types/viewerTypes'
 
@@ -45,6 +46,8 @@ export interface BaseViewerLayoutProps<T extends BaseInstanceInfo> {
   globalFps: number
   /** Resolution 선택 (512=PNG, 256=JPEG, 128=JPEG) */
   globalResolution?: number
+  /** Resolution 모드 (auto: 레이아웃별 자동, manual: 수동) */
+  resolutionMode?: ResolutionMode
 
   // 핸들러
   onLayoutChange: (layout: GridLayout) => void
@@ -53,6 +56,7 @@ export interface BaseViewerLayoutProps<T extends BaseInstanceInfo> {
   onFilterChange: (filter: InstanceFilter) => void
   onFpsChange: (fps: number) => void
   onResolutionChange?: (resolution: number) => void
+  onResolutionModeChange?: (mode: ResolutionMode) => void
   onPlayAll: () => void
   onPauseAll: () => void
   onStopAll: () => void
@@ -84,12 +88,14 @@ export function BaseViewerLayout<T extends BaseInstanceInfo>({
   totalCount,
   globalFps,
   globalResolution,
+  resolutionMode,
   onLayoutChange,
   onSlotClick,
   onThumbnailClick,
   onFilterChange,
   onFpsChange,
   onResolutionChange,
+  onResolutionModeChange,
   onPlayAll,
   onPauseAll,
   onStopAll,
@@ -164,6 +170,8 @@ export function BaseViewerLayout<T extends BaseInstanceInfo>({
         onFpsChange={onFpsChange}
         globalResolution={globalResolution}
         onResolutionChange={onResolutionChange}
+        resolutionMode={resolutionMode}
+        onResolutionModeChange={onResolutionModeChange}
         onPlayAll={onPlayAll}
         onPauseAll={onPauseAll}
         onStopAll={onStopAll}

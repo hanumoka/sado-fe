@@ -28,6 +28,15 @@ let totalPrefetchCalls = 0
 let totalFramesPrefetched = 0
 let totalBytesPrefetched = 0
 
+// Resolution별 통계 (크기 비교용)
+interface ResolutionStats {
+  frameCount: number
+  totalBytes: number
+  minBytes: number
+  maxBytes: number
+}
+const resolutionStats = new Map<number, ResolutionStats>()
+
 /**
  * Rendered 프레임 URL 생성
  *
@@ -117,14 +126,32 @@ export async function prefetchRenderedFrameBatch(
     let cached = frameNumbers.length - uncachedFrames.length // 이미 캐시된 수
     let bytesCached = 0
 
+    // Resolution별 통계를 위한 키 (512는 기본값으로 처리)
+    const resKey = resolution || 512
+
     for (const frame of parsedFrames) {
       const url = buildRenderedFrameUrl(studyUid, seriesUid, sopInstanceUid, frame.frameNumber, resolution)
       cacheRenderedFrame(url, frame.data)
 
+      const frameSize = frame.data.byteLength
+
       cached++
-      bytesCached += frame.data.byteLength
+      bytesCached += frameSize
       totalFramesPrefetched++
-      totalBytesPrefetched += frame.data.byteLength
+      totalBytesPrefetched += frameSize
+
+      // Resolution별 통계 업데이트
+      const stats = resolutionStats.get(resKey) || {
+        frameCount: 0,
+        totalBytes: 0,
+        minBytes: Infinity,
+        maxBytes: 0,
+      }
+      stats.frameCount++
+      stats.totalBytes += frameSize
+      stats.minBytes = Math.min(stats.minBytes, frameSize)
+      stats.maxBytes = Math.max(stats.maxBytes, frameSize)
+      resolutionStats.set(resKey, stats)
 
       onProgress?.(cached, frameNumbers.length)
       // 개별 프레임 로드 즉시 콜백 (0-based로 변환)
@@ -174,8 +201,8 @@ export async function prefetchAllRenderedFrames(
     return 0
   }
 
-  // 동시 요청 배치 수 (네트워크 활용도 ↑, 서버 부하 고려)
-  const CONCURRENT_BATCHES = 3
+  // 동시 요청 배치 수 (3 → 4로 증가, 네트워크 활용도 ↑)
+  const CONCURRENT_BATCHES = 4
 
   if (DEBUG_PREFETCHER) {
     console.log(
@@ -247,6 +274,18 @@ export async function prefetchAllRenderedFrames(
 }
 
 /**
+ * Resolution별 통계 정보
+ */
+export interface ResolutionStatsInfo {
+  resolution: number
+  frameCount: number
+  totalBytes: number
+  avgBytes: number
+  minBytes: number
+  maxBytes: number
+}
+
+/**
  * 프리페치 통계 조회
  *
  * @returns 통계 객체
@@ -256,12 +295,52 @@ export function getRenderedPrefetcherStats(): {
   totalFramesPrefetched: number
   totalBytesPrefetched: number
   avgFramesPerCall: number
+  avgBytesPerFrame: number
+  resolutionStats: ResolutionStatsInfo[]
 } {
+  // Resolution별 통계를 배열로 변환
+  const resStats: ResolutionStatsInfo[] = []
+  resolutionStats.forEach((stats, resolution) => {
+    resStats.push({
+      resolution,
+      frameCount: stats.frameCount,
+      totalBytes: stats.totalBytes,
+      avgBytes: stats.frameCount > 0 ? Math.round(stats.totalBytes / stats.frameCount) : 0,
+      minBytes: stats.minBytes === Infinity ? 0 : stats.minBytes,
+      maxBytes: stats.maxBytes,
+    })
+  })
+
+  // Resolution 순으로 정렬
+  resStats.sort((a, b) => b.resolution - a.resolution)
+
   return {
     totalPrefetchCalls,
     totalFramesPrefetched,
     totalBytesPrefetched,
     avgFramesPerCall: totalPrefetchCalls > 0 ? totalFramesPrefetched / totalPrefetchCalls : 0,
+    avgBytesPerFrame: totalFramesPrefetched > 0 ? Math.round(totalBytesPrefetched / totalFramesPrefetched) : 0,
+    resolutionStats: resStats,
+  }
+}
+
+/**
+ * 특정 Resolution의 통계만 조회
+ *
+ * @param resolution 해상도 (512, 256, 128, 64, 32)
+ * @returns Resolution 통계 또는 null
+ */
+export function getResolutionStats(resolution: number): ResolutionStatsInfo | null {
+  const stats = resolutionStats.get(resolution)
+  if (!stats) return null
+
+  return {
+    resolution,
+    frameCount: stats.frameCount,
+    totalBytes: stats.totalBytes,
+    avgBytes: stats.frameCount > 0 ? Math.round(stats.totalBytes / stats.frameCount) : 0,
+    minBytes: stats.minBytes === Infinity ? 0 : stats.minBytes,
+    maxBytes: stats.maxBytes,
   }
 }
 
@@ -272,5 +351,6 @@ export function resetRenderedPrefetcherStats(): void {
   totalPrefetchCalls = 0
   totalFramesPrefetched = 0
   totalBytesPrefetched = 0
+  resolutionStats.clear()
 }
 

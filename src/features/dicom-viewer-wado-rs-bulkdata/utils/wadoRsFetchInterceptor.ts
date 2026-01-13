@@ -37,6 +37,7 @@ let passedThroughRequests = 0
  *
  * cornerstoneDICOMImageLoader가 요청하는 URL 형식:
  * http://localhost:10201/dicomweb/studies/{studyUid}/series/{seriesUid}/instances/{sopInstanceUid}/frames/{frameNumber}
+ * http://localhost:10201/dicomweb/studies/{studyUid}/series/{seriesUid}/instances/{sopInstanceUid}/frames/{frameNumber}?format=raw
  *
  * @param url 요청 URL
  * @returns WADO-RS 프레임 요청 여부
@@ -44,7 +45,8 @@ let passedThroughRequests = 0
 function isWadoRsFrameRequest(url: string): boolean {
   // /dicomweb/studies/.../instances/.../frames/N 패턴
   // 단일 프레임 요청만 인터셉트 (배치 요청 /frames/1,2,3은 제외)
-  const pattern = /\/dicomweb\/studies\/[^/]+\/series\/[^/]+\/instances\/[^/]+\/frames\/\d+$/
+  // ?format=xxx 쿼리 파라미터 허용 (optional)
+  const pattern = /\/dicomweb\/studies\/[^/]+\/series\/[^/]+\/instances\/[^/]+\/frames\/\d+(\?[^,]*)?$/
   return pattern.test(url)
 }
 

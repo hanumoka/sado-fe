@@ -18,7 +18,7 @@ import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMulti
 import { handleDicomError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
-import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
+import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { prefetchFrameBatch } from '../utils/wadoRsBatchPrefetcher'
 import { useShallow } from 'zustand/react/shallow'
 import { WadoRsBulkDataSlotOverlay } from './WadoRsBulkDataSlotOverlay'
@@ -64,6 +64,11 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     (state) => state.slots[slotId]?.metadataError ?? null
   )
 
+  // Stack 재로드 트리거 (캐시 클리어 시 증가)
+  const stackVersion = useWadoRsBulkDataMultiViewerStore(
+    (state) => state.slots[slotId]?.stackVersion ?? 0
+  )
+
   // 객체 타입 필드 (shallow 비교로 불필요한 리렌더링 방지)
   const instance = useWadoRsBulkDataMultiViewerStore(
     useShallow((state) => state.slots[slotId]?.instance ?? null)
@@ -80,6 +85,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
 
   // 전역 상태 및 액션
   const globalFps = useWadoRsBulkDataMultiViewerStore((state) => state.globalFps)
+  const globalFormat = useWadoRsBulkDataMultiViewerStore((state) => state.globalFormat)
   const allThumbnailsLoaded = useWadoRsBulkDataMultiViewerStore((state) => state.allThumbnailsLoaded)
   const assignInstanceToSlot = useWadoRsBulkDataMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useWadoRsBulkDataMultiViewerStore((state) => state.preloadSlotFrames)
@@ -225,12 +231,13 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         // 메타데이터 실패해도 계속 진행 (fallback 값 사용)
       }
 
-      // WADO-RS BulkData imageIds 생성
+      // WADO-RS BulkData imageIds 생성 (globalFormat 적용)
       const imageIds = createWadoRsBulkDataImageIds(
         studyInstanceUid,
         seriesInstanceUid,
         sopInstanceUid,
-        numberOfFrames
+        numberOfFrames,
+        globalFormat  // format 파라미터 추가
       )
 
       // 초기 프레임 배치 프리페치 (캐시에 저장)
@@ -240,9 +247,23 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
       const initialFrameCount = Math.min(INITIAL_BATCH_SIZE, numberOfFrames)
       const initialFrames = Array.from({ length: initialFrameCount }, (_, i) => i + 1)
 
+      // 캐시된 메타데이터 가져오기 (original 인코딩 디코딩에 필요)
+      const cachedMetadata = getCachedMetadata(sopInstanceUid)
+
       try {
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Prefetching ${initialFrameCount} frames via batch API...`)
-        await prefetchFrameBatch(studyInstanceUid, seriesInstanceUid, sopInstanceUid, initialFrames)
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Prefetching ${initialFrameCount} frames via batch API (format: ${globalFormat})...`)
+        await prefetchFrameBatch(
+          studyInstanceUid,
+          seriesInstanceUid,
+          sopInstanceUid,
+          initialFrames,
+          undefined, // onProgress
+          {
+            format: globalFormat,
+            preferCompressed: globalFormat === 'original',
+            metadata: cachedMetadata,  // 메타데이터 전달 (original 인코딩 디코딩용)
+          }
+        )
         if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Initial frames prefetched`)
       } catch (prefetchErr) {
         // 프리페치 실패해도 계속 진행 (개별 요청으로 fallback)
@@ -309,7 +330,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     return () => {
       wadoRsBulkDataCineAnimationManager.unregisterViewport(slotId)
     }
-  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId])
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, globalFormat])  // stackVersion: 캐시 클리어 시 Stack 재설정, globalFormat: 포맷 변경 시 재설정
 
   // ==================== 자동 프리로드 ====================
 

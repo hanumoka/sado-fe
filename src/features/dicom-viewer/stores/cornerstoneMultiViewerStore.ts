@@ -9,9 +9,11 @@
  * mini-pacs-poc 참고
  */
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   GridLayout,
   ApiType,
+  ResolutionMode,
   InstanceSummary,
   CornerstoneSlotState,
   CornerstoneMultiViewerState,
@@ -22,9 +24,10 @@ import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { imageLoader } from '@cornerstonejs/core'
 import { createWadoRsRenderedImageId } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { prefetchAllRenderedFrames } from '../utils/wadoRsRenderedPrefetcher'
+import { clearRenderedCache } from '../utils/wadoRsRenderedCache'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
-const DEBUG_STORE = false
+const DEBUG_STORE = true
 
 // ==================== 초기 상태 생성 ====================
 
@@ -59,6 +62,8 @@ function createEmptySlotState(): CornerstoneSlotState {
     // Progressive Playback 필드
     loadedFrames: new Set<number>(),
     isBuffering: false,
+    // Stack 재로드 트리거
+    stackVersion: 0,
   }
 }
 
@@ -75,17 +80,49 @@ function getMaxSlots(layout: GridLayout): number {
       return 9
     case '4x4':
       return 16
+    case '5x5':
+      return 25
     default:
       return 1
   }
 }
 
 /**
- * 초기 슬롯 상태 맵 생성 (최대 16개)
+ * 레이아웃별 최적 해상도 반환
+ *
+ * 슬롯 수가 많을수록 낮은 해상도를 사용하여 네트워크 부하 감소
+ * - 1x1: 512px (PNG, 최고 품질) - 평균 342KB/프레임
+ * - 2x2: 256px (JPEG, 고품질) - 평균 25KB/프레임
+ * - 3x3: 128px (JPEG, 중간 품질) - 평균 2.4KB/프레임
+ * - 4x4: 64px (JPEG, 저품질) - 평균 1.2KB/프레임
+ * - 5x5: 32px (JPEG, 최소 품질) - 평균 853Bytes/프레임
+ */
+function getOptimalResolutionForLayout(layout: GridLayout): number {
+  switch (layout) {
+    case '1x1':
+      return 512  // PNG, 최고 품질
+    case '2x2':
+      return 256  // JPEG, 고품질
+    case '3x3':
+      return 128  // JPEG, 중간 품질
+    case '4x4':
+      return 64   // JPEG, 저품질
+    case '5x5':
+      return 32   // JPEG, 최소 품질 (빠른 로드)
+    default:
+      return 512
+  }
+}
+
+// 최대 슬롯 수 (5x5 = 25)
+const MAX_TOTAL_SLOTS = 25
+
+/**
+ * 초기 슬롯 상태 맵 생성 (최대 25개)
  */
 function createInitialSlots(): Record<number, CornerstoneSlotState> {
   const slots: Record<number, CornerstoneSlotState> = {}
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
     slots[i] = createEmptySlotState()
   }
   return slots
@@ -99,6 +136,8 @@ interface CornerstoneMultiViewerActions {
   setApiType: (apiType: ApiType) => void
   setGlobalFps: (fps: number) => void
   setGlobalResolution: (resolution: number) => void
+  setResolutionMode: (mode: ResolutionMode) => void
+  getEffectiveResolution: () => number
 
   // 슬롯 인스턴스 관리
   assignInstanceToSlot: (slotId: number, instance: InstanceSummary) => void
@@ -254,12 +293,15 @@ const INITIAL_BUFFER_SIZE = 20 // 초기 버퍼 크기 (재생 시작 전 로드
 
 // ==================== Store 구현 ====================
 
-export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore>((set, get) => ({
+export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore>()(
+  persist(
+    (set, get) => ({
   // 초기 상태
-  layout: '1x1',
-  apiType: 'wado-rs',
+  layout: '1x1' as const,
+  apiType: 'wado-rs' as const,
   globalFps: 30,
-  globalResolution: 512, // 512=PNG, 256=JPEG, 128=JPEG
+  globalResolution: 512, // 512=PNG, 256=JPEG, 128=JPEG (auto 모드에서는 레이아웃별 자동 설정)
+  resolutionMode: 'auto' as const, // 기본값: 레이아웃별 자동 해상도
   slots: createInitialSlots(),
   availableInstances: [],
 
@@ -271,7 +313,52 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   // ==================== 레이아웃 관리 ====================
 
   setLayout: (layout) => {
-    set({ layout })
+    const currentLayout = get().layout
+    if (currentLayout === layout) return
+
+    const resolutionMode = get().resolutionMode
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. Rendered 캐시 클리어
+    clearRenderedCache()
+
+    // 3. Auto 모드일 때만 레이아웃별 최적 해상도 자동 설정
+    const newResolution = resolutionMode === 'auto'
+      ? getOptimalResolutionForLayout(layout)
+      : get().globalResolution
+
+    // 4. 모든 슬롯 전체 리셋 (캐시와 상태 동기화)
+    // 캐시 클리어 시 loadedFrames도 함께 리셋하여 캐시-상태 불일치 방지
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, CornerstoneSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          loadedFrames: new Set<number>(),
+          isBuffering: false,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
+    }
+
+    set({
+      layout,
+      globalResolution: newResolution,
+      slots: resetSlots
+    })
+
+    if (DEBUG_STORE) {
+      console.log(`[MultiViewer] Layout changed: ${currentLayout} → ${layout}, mode: ${resolutionMode}, resolution: ${newResolution}px`)
+    }
   },
 
   setApiType: (apiType) => {
@@ -283,11 +370,124 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   },
 
   setGlobalResolution: (resolution) => {
-    // 유효한 해상도만 허용 (512, 256, 128)
-    const validResolutions = [512, 256, 128]
-    if (validResolutions.includes(resolution)) {
-      set({ globalResolution: resolution })
+    // 유효한 해상도만 허용 (512, 256, 128, 64, 32)
+    const validResolutions = [512, 256, 128, 64, 32]
+    if (!validResolutions.includes(resolution)) return
+
+    const currentResolution = get().globalResolution
+    const currentMode = get().resolutionMode
+
+    // 같은 해상도면서 이미 manual 모드면 무시
+    if (currentResolution === resolution && currentMode === 'manual') return
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. Rendered 캐시 클리어 (resolution이 캐시 키에 포함됨)
+    clearRenderedCache()
+
+    // 3. 모든 슬롯 프리로드 상태 리셋 (resolution 변경은 전체 리셋 필요)
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, CornerstoneSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          loadedFrames: new Set<number>(),
+          isBuffering: false,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
     }
+
+    // 수동 해상도 선택 시 manual 모드로 전환
+    set({
+      globalResolution: resolution,
+      resolutionMode: 'manual',
+      slots: resetSlots
+    })
+
+    if (DEBUG_STORE) {
+      console.log(`[MultiViewer] Resolution manually set to ${resolution}px (mode: manual)`)
+    }
+  },
+
+  /**
+   * 해상도 모드 설정
+   * auto: 레이아웃별 자동 해상도
+   * manual: 수동 선택 해상도 유지
+   */
+  setResolutionMode: (mode) => {
+    const currentMode = get().resolutionMode
+    if (currentMode === mode) return
+
+    if (mode === 'auto') {
+      // Auto 모드로 전환 시 현재 레이아웃에 맞는 해상도로 변경
+      const layout = get().layout
+      const optimalResolution = getOptimalResolutionForLayout(layout)
+      const currentResolution = get().globalResolution
+
+      // 해상도가 변경되는 경우에만 캐시 클리어 및 슬롯 리셋
+      if (currentResolution !== optimalResolution) {
+        get().pauseAll()
+        clearRenderedCache()
+
+        const slots = get().slots
+        const resetSlots: Record<number, CornerstoneSlotState> = {}
+        for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+          if (slots[i]) {
+            resetSlots[i] = {
+              ...slots[i],
+              isPreloading: false,
+              isPreloaded: false,
+              preloadProgress: 0,
+              currentFrame: 0,
+              loadedFrames: new Set<number>(),
+              isBuffering: false,
+              isPlaying: false,
+              stackVersion: (slots[i].stackVersion ?? 0) + 1,
+            }
+          }
+        }
+
+        set({
+          resolutionMode: mode,
+          globalResolution: optimalResolution,
+          slots: resetSlots
+        })
+      } else {
+        set({ resolutionMode: mode })
+      }
+
+      if (DEBUG_STORE) {
+        console.log(`[MultiViewer] Resolution mode set to auto (layout: ${layout}, resolution: ${optimalResolution}px)`)
+      }
+    } else {
+      // Manual 모드로 전환 (현재 해상도 유지)
+      set({ resolutionMode: mode })
+
+      if (DEBUG_STORE) {
+        console.log(`[MultiViewer] Resolution mode set to manual (resolution: ${get().globalResolution}px)`)
+      }
+    }
+  },
+
+  /**
+   * 현재 유효 해상도 반환
+   * auto 모드: 레이아웃별 최적 해상도
+   * manual 모드: globalResolution
+   */
+  getEffectiveResolution: () => {
+    const { resolutionMode, layout, globalResolution } = get()
+    return resolutionMode === 'auto'
+      ? getOptimalResolutionForLayout(layout)
+      : globalResolution
   },
 
   // ==================== 슬롯 인스턴스 관리 ====================
@@ -368,6 +568,16 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       }))
 
       if (DEBUG_STORE) console.log(`[MultiViewer] Loaded instance to slot ${slotId}:`, updatedInstance)
+
+      // 멀티프레임인 경우 자동 프리페치 시작 (백그라운드)
+      // Play All 클릭 전에 미리 로드하여 즉시 재생 가능하도록 함
+      if (numberOfFrames > 1) {
+        if (DEBUG_STORE) console.log(`[MultiViewer] Auto-starting preload for slot ${slotId} (${numberOfFrames} frames)`)
+        get().preloadSlotFrames(slotId).catch((error) => {
+          // 프리페치 실패는 치명적이지 않음 - Play 시 다시 시도됨
+          console.warn(`[MultiViewer] Auto preload failed for slot ${slotId}:`, error)
+        })
+      }
     } catch (error) {
       const errorMessage = handleDicomError(error, 'loadSlotInstance')
 
@@ -570,53 +780,62 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       return
     }
 
-    // 2. 모든 슬롯 프리로드 병렬 시작 (백그라운드)
-    if (DEBUG_STORE) console.log(`[MultiViewer] Starting parallel preload for ${multiframeSlotIds.length} slots`)
-
-    for (const slotId of multiframeSlotIds) {
-      const slot = get().slots[slotId]
-      // 이미 완료되었거나 진행 중이면 스킵
-      if (slot?.isPreloaded || slot?.isPreloading) {
-        if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} already preloaded/preloading, skipping`)
-        continue
-      }
-
-      // 백그라운드 프리로드 시작 (await 없음!)
-      get().preloadSlotFrames(slotId).catch((error) => {
-        console.warn(`[playAll] Background preload failed for slot ${slotId}:`, error)
-      })
-    }
-
-    // 3. 각 슬롯의 초기 버퍼 대기 후 즉시 재생 시작 (병렬)
+    // 2. 동시 프리로드 슬롯 수 제한 (서버 부하 관리)
+    const CONCURRENT_SLOT_PRELOADS = 4 // 4개 슬롯씩 순차적으로 프리로드
     const INITIAL_BUFFER_SIZE = 20
 
-    await Promise.all(
-      multiframeSlotIds.map(async (slotId) => {
+    if (DEBUG_STORE) console.log(`[MultiViewer] Starting controlled preload for ${multiframeSlotIds.length} slots (concurrent: ${CONCURRENT_SLOT_PRELOADS})`)
+
+    // 3. 슬롯을 그룹으로 나누어 순차적으로 프리로드 + 재생 시작
+    for (let i = 0; i < multiframeSlotIds.length; i += CONCURRENT_SLOT_PRELOADS) {
+      const currentBatch = multiframeSlotIds.slice(i, i + CONCURRENT_SLOT_PRELOADS)
+
+      if (DEBUG_STORE) console.log(`[MultiViewer] Processing slot batch: [${currentBatch.join(', ')}]`)
+
+      // 3.1 현재 배치의 슬롯들 프리로드 시작 (백그라운드)
+      for (const slotId of currentBatch) {
         const slot = get().slots[slotId]
-        if (!slot?.instance) return
-
-        const numberOfFrames = slot.instance.numberOfFrames
-        const initialBuffer = Math.min(INITIAL_BUFFER_SIZE, numberOfFrames)
-
-        // 초기 버퍼만 대기 (전체 프리로드 아님)
-        if (slot.loadedFrames.size < initialBuffer && !slot.isPreloaded) {
-          await waitForInitialBuffer(slotId, initialBuffer, get)
+        // 이미 완료되었거나 진행 중이면 스킵
+        if (slot?.isPreloaded || slot?.isPreloading) {
+          if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} already preloaded/preloading, skipping`)
+          continue
         }
 
-        // 해당 슬롯 즉시 재생 시작
-        set((state) => ({
-          slots: {
-            ...state.slots,
-            [slotId]: {
-              ...state.slots[slotId],
-              isPlaying: true,
-            },
-          },
-        }))
+        // 백그라운드 프리로드 시작 (await 없음!)
+        get().preloadSlotFrames(slotId).catch((error) => {
+          console.warn(`[playAll] Background preload failed for slot ${slotId}:`, error)
+        })
+      }
 
-        if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} started playing`)
-      })
-    )
+      // 3.2 현재 배치의 초기 버퍼 대기 후 재생 시작 (병렬)
+      await Promise.all(
+        currentBatch.map(async (slotId) => {
+          const slot = get().slots[slotId]
+          if (!slot?.instance) return
+
+          const numberOfFrames = slot.instance.numberOfFrames
+          const initialBuffer = Math.min(INITIAL_BUFFER_SIZE, numberOfFrames)
+
+          // 초기 버퍼만 대기 (전체 프리로드 아님)
+          if (slot.loadedFrames.size < initialBuffer && !slot.isPreloaded) {
+            await waitForInitialBuffer(slotId, initialBuffer, get)
+          }
+
+          // 해당 슬롯 즉시 재생 시작
+          set((state) => ({
+            slots: {
+              ...state.slots,
+              [slotId]: {
+                ...state.slots[slotId],
+                isPlaying: true,
+              },
+            },
+          }))
+
+          if (DEBUG_STORE) console.log(`[MultiViewer] Slot ${slotId} started playing`)
+        })
+      )
+    }
 
     if (DEBUG_STORE) console.log(`[MultiViewer] playAll completed for ${multiframeSlotIds.length} slots`)
   },
@@ -725,9 +944,9 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
-      const PREFETCH_BATCH_SIZE = 10 // 배치 API 최적 크기
-      const CORNERSTONE_CONCURRENT_BATCHES = 2 // Phase 2 동시 배치 수
-      const CORNERSTONE_BATCH_SIZE = 10 // Phase 2 배치 크기 증가
+      const PREFETCH_BATCH_SIZE = 50 // 배치 API 최적 크기 (10 → 50으로 증가, 네트워크 요청 감소)
+      const CORNERSTONE_CONCURRENT_BATCHES = 4 // Phase 2 동시 배치 수 (2 → 4로 증가)
+      const CORNERSTONE_BATCH_SIZE = 50 // Phase 2 배치 크기 (10 → 50으로 증가, imageLoader 호출 횟수 감소)
 
       if (DEBUG_STORE) console.log(`[MultiViewer] 2-Phase preload for slot ${slotId}: ${numberOfFrames} frames`)
 
@@ -1138,4 +1357,35 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       allThumbnailsLoaded: false,
     })
   },
-}))
+    }),
+    {
+      name: 'cornerstone-viewer-settings',
+      storage: createJSONStorage(() => sessionStorage),
+      // 세션 스토리지에 저장할 상태만 선택 (설정 값만)
+      partialize: (state) => ({
+        layout: state.layout,
+        apiType: state.apiType,
+        globalFps: state.globalFps,
+        globalResolution: state.globalResolution,
+        resolutionMode: state.resolutionMode,
+      }),
+      // 상태 복원 시 저장된 값으로 덮어쓰기
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<CornerstoneMultiViewerState>),
+      }),
+      // 복원 완료 시 로그 (디버깅용)
+      onRehydrateStorage: () => (state) => {
+        if (DEBUG_STORE && state) {
+          console.log('[MultiViewer] Restored from session storage:', {
+            layout: state.layout,
+            apiType: state.apiType,
+            globalFps: state.globalFps,
+            globalResolution: state.globalResolution,
+            resolutionMode: state.resolutionMode,
+          })
+        }
+      },
+    }
+  )
+)

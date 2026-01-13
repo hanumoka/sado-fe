@@ -37,10 +37,13 @@ export default function DicomViewerPage() {
 
   // Cornerstone store
   const {
+    layout: storeLayout,
     globalFps,
     setGlobalFps,
     globalResolution,
     setGlobalResolution,
+    resolutionMode,
+    setResolutionMode,
     setLayout: setStoreLayout,
     assignInstanceToSlot,
     playAll,
@@ -60,6 +63,7 @@ export default function DicomViewerPage() {
       seriesInstanceUid: seriesInstanceUid || '',
       numberOfFrames: inst.numberOfFrames || 1,
       instanceNumber: inst.instanceNumber,
+      transferSyntaxUid: inst.transferSyntaxUid,
     })),
     [data?.instances, studyInstanceUid, seriesInstanceUid]
   )
@@ -81,7 +85,7 @@ export default function DicomViewerPage() {
     handleThumbnailError,
   } = useViewerPage({
     instances,
-    initialLayout: '1x1',
+    initialLayout: storeLayout,
     initialFilter: 'playable',
     onLayoutChange: setStoreLayout,
     onThumbnailLoad: markThumbnailLoaded,
@@ -170,7 +174,7 @@ export default function DicomViewerPage() {
     setLayout(newLayout)
 
     if (filteredInstances.length && studyInstanceUid && seriesInstanceUid) {
-      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : 16
+      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : newLayout === '4x4' ? 16 : 25
       filteredInstances.slice(0, newSlots).forEach((instance, index) => {
         const instanceSummary: InstanceSummary = {
           sopInstanceUid: instance.sopInstanceUid,
@@ -210,6 +214,8 @@ export default function DicomViewerPage() {
       onFpsChange={setGlobalFps}
       globalResolution={globalResolution}
       onResolutionChange={setGlobalResolution}
+      resolutionMode={resolutionMode}
+      onResolutionModeChange={setResolutionMode}
       onPlayAll={playAll}
       onPauseAll={pauseAll}
       onStopAll={stopAll}

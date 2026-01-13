@@ -7,8 +7,8 @@
 
 // ==================== 레이아웃 타입 ====================
 
-/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4) */
-export type WadoRsBulkDataGridLayout = '1x1' | '2x2' | '3x3' | '4x4'
+/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4, 5x5) */
+export type WadoRsBulkDataGridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
 
 // ==================== Instance 정보 ====================
 
@@ -64,6 +64,10 @@ export interface WadoRsBulkDataSlotState {
   metadataError: string | null
   /** 성능 통계 */
   performanceStats: WadoRsBulkDataSlotPerformanceStats
+
+  // Stack 재로드 트리거
+  /** Stack 버전 (캐시 클리어 시 증가하여 Stack 재설정 트리거) */
+  stackVersion: number
 }
 
 // ==================== 프리로드 성능 ====================
@@ -82,12 +86,17 @@ export interface WadoRsBulkDataPreloadPerformance {
 
 // ==================== Store 상태 ====================
 
+/** BulkData 포맷 타입 */
+export type BulkDataFormat = 'raw' | 'original'
+
 /** WADO-RS BulkData Multi Viewer 전체 상태 */
 export interface WadoRsBulkDataMultiViewerState {
   /** 레이아웃 (1x1, 2x2, 3x3, 4x4) */
   layout: WadoRsBulkDataGridLayout
   /** 전역 FPS 설정 */
   globalFps: number
+  /** 전역 포맷 설정 (raw: 디코딩된 픽셀, original: 원본 인코딩) */
+  globalFormat: BulkDataFormat
   /** 슬롯 상태 (최대 16개) */
   slots: Record<number, WadoRsBulkDataSlotState>
   /** 사용 가능한 인스턴스 목록 */

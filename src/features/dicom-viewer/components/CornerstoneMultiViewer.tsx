@@ -38,6 +38,12 @@ function getGridClass(layout: GridLayout): string {
       return 'grid-cols-3 grid-rows-3'
     case '4x4':
       return 'grid-cols-4 grid-rows-4'
+    case '5x5':
+      return 'grid-cols-5 grid-rows-5'
+    default:
+      // TypeScript exhaustiveness check
+      const _exhaustive: never = layout
+      return _exhaustive
   }
 }
 
@@ -54,6 +60,12 @@ function getSlotIds(layout: GridLayout): number[] {
       return [0, 1, 2, 3, 4, 5, 6, 7, 8]
     case '4x4':
       return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    case '5x5':
+      return Array.from({ length: 25 }, (_, i) => i)
+    default:
+      // TypeScript exhaustiveness check
+      const _exhaustive: never = layout
+      return _exhaustive
   }
 }
 

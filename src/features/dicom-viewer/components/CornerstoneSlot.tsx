@@ -68,6 +68,11 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     (state) => state.getLoadedFrameCount(slotId)
   )
 
+  // Stack 재로드 트리거 (캐시 클리어 시 증가)
+  const stackVersion = useCornerstoneMultiViewerStore(
+    (state) => state.slots[slotId]?.stackVersion ?? 0
+  )
+
   // 객체 타입 필드 (shallow 비교로 불필요한 리렌더링 방지)
   const instance = useCornerstoneMultiViewerStore(
     useShallow((state) => state.slots[slotId]?.instance ?? null)
@@ -285,7 +290,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     return () => {
       cineAnimationManager.unregisterViewport(slotId)
     }
-  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, globalResolution])  // globalResolution 추가: resolution 변경 시 stack 재로드
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, globalResolution, stackVersion])  // stackVersion 추가: 캐시 클리어 시 Stack 재설정
 
   // ==================== 자동 프리로드 ====================
   // Phase 2: 썸네일 로딩 완료 후 프리로드 시작 (썸네일 우선 전략)

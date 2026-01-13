@@ -14,8 +14,6 @@
  * - 포트 불일치 문제 해결 (10300 vs 10201)
  */
 
-import { API_BASE_URL } from '@/lib/config'
-
 /**
  * Cornerstone imageId용: 상대 경로 사용 (Vite 프록시 활용)
  * - 배치 프리페처의 DICOMWEB_BASE_URL과 동일한 형식
@@ -24,11 +22,14 @@ import { API_BASE_URL } from '@/lib/config'
 const API_BASE = ''
 
 /**
- * 썸네일 URL용: 절대 경로 사용
- * - <img src="..."> 태그에서 직접 사용되므로 절대 경로 필요
- * - Cornerstone 로더와 무관하게 독립적으로 작동
+ * 썸네일 URL용: 상대 경로 사용 (Vite 프록시 활용)
+ * - <img src="..."> 태그에서 Vite 프록시를 통해 /dicomweb → 백엔드로 전달
+ * - CORS 문제 방지 및 포트 불일치 해결
  */
-const THUMBNAIL_BASE = API_BASE_URL
+const THUMBNAIL_BASE = ''
+
+/** BulkData 포맷 타입 */
+export type BulkDataFormat = 'raw' | 'original'
 
 /**
  * WADO-RS BulkData imageId 생성
@@ -37,6 +38,7 @@ const THUMBNAIL_BASE = API_BASE_URL
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (0-based, 멀티프레임용)
+ * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩)
  * @returns wadors:URL 형식의 imageId
  *
  * @example
@@ -47,18 +49,28 @@ const THUMBNAIL_BASE = API_BASE_URL
  * // 멀티프레임 (프레임 5, 0-based → frame 6)
  * createWadoRsBulkDataImageId('1.2.3', '1.2.4', '1.2.5', 5)
  * // → 'wadors:/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/6'
+ *
+ * // format=original 지정
+ * createWadoRsBulkDataImageId('1.2.3', '1.2.4', '1.2.5', 0, 'original')
+ * // → 'wadors:/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/1?format=original'
  */
 export function createWadoRsBulkDataImageId(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber?: number
+  frameNumber?: number,
+  format?: BulkDataFormat
 ): string {
   // DICOM frame 번호는 1-based
   const frameNum = frameNumber !== undefined ? frameNumber + 1 : 1
 
   // WADO-RS BulkData URL 형식
-  const url = `${API_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNum}`
+  let url = `${API_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNum}`
+
+  // format 파라미터 추가
+  if (format) {
+    url += `?format=${format}`
+  }
 
   return `wadors:${url}`
 }
@@ -70,22 +82,24 @@ export function createWadoRsBulkDataImageId(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param numberOfFrames 총 프레임 수
+ * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩)
  * @returns imageId 배열
  */
 export function createWadoRsBulkDataImageIds(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  numberOfFrames: number
+  numberOfFrames: number,
+  format?: BulkDataFormat
 ): string[] {
   // 단일 프레임인 경우
   if (numberOfFrames <= 1) {
-    return [createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid)]
+    return [createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid, undefined, format)]
   }
 
   // 멀티프레임: 각 프레임별 imageId 생성
   return Array.from({ length: numberOfFrames }, (_, i) =>
-    createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid, i)
+    createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid, i, format)
   )
 }
 

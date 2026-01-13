@@ -44,6 +44,7 @@ export default function WadoUriViewerPage() {
 
   // WADO-URI 전용 store
   const {
+    layout: storeLayout,
     globalFps,
     setGlobalFps,
     setLayout: setStoreLayout,
@@ -65,6 +66,7 @@ export default function WadoUriViewerPage() {
       seriesInstanceUid: seriesInstanceUid || '',
       numberOfFrames: inst.numberOfFrames || 1,
       instanceNumber: inst.instanceNumber,
+      transferSyntaxUid: inst.transferSyntaxUid,
     })),
     [data?.instances, studyInstanceUid, seriesInstanceUid]
   )
@@ -86,7 +88,7 @@ export default function WadoUriViewerPage() {
     handleThumbnailError,
   } = useViewerPage({
     instances,
-    initialLayout: '1x1',
+    initialLayout: storeLayout,
     initialFilter: 'playable',
     onLayoutChange: setStoreLayout,
     onThumbnailLoad: markThumbnailLoaded,
@@ -209,7 +211,7 @@ export default function WadoUriViewerPage() {
     setLayout(newLayout)
 
     if (filteredInstances.length && studyInstanceUid && seriesInstanceUid) {
-      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : 16
+      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : newLayout === '4x4' ? 16 : 25
       filteredInstances.slice(0, newSlots).forEach((instance, index) => {
         const instanceSummary: WadoUriInstanceSummary = {
           sopInstanceUid: instance.sopInstanceUid,

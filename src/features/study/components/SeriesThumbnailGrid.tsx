@@ -24,7 +24,7 @@ interface SeriesThumbnailGridProps {
 /**
  * Series 카드 컴포넌트 (썸네일 포함)
  */
-type ViewerType = 'wado-rs-rendered' | 'wado-rs' | 'wado-uri'
+type ViewerType = 'wado-rs-rendered' | 'wado-rs' | 'wado-uri' | 'mjpeg'
 
 interface SeriesCardProps {
   series: Series
@@ -130,6 +130,18 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
               <Eye className="h-3 w-3 mr-1" />
               WADO-URI
             </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs bg-green-600 hover:bg-green-500 text-white"
+              onClick={(e) => {
+                e.stopPropagation()
+                onView(series.id, 'mjpeg')
+              }}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              MJPEG
+            </Button>
           </div>
         </div>
       </div>
@@ -157,6 +169,12 @@ export default function SeriesThumbnailGrid({
   const navigate = useNavigate()
 
   const handleViewSeries = (seriesId: string, viewerType: ViewerType) => {
+    // MJPEG 뷰어는 별도 페이지로 이동 (자체 사이드바에서 instance 선택)
+    if (viewerType === 'mjpeg') {
+      navigate('/viewer/mjpeg')
+      return
+    }
+
     // seriesId로 해당 Series 찾기
     const series = seriesList.find((s) => s.id === seriesId)
     if (!series || !studyInstanceUid) return

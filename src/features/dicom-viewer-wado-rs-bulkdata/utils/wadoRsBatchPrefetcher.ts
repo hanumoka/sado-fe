@@ -35,13 +35,20 @@ function buildFrameUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  format?: 'raw' | 'original'
 ): string {
-  return `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+  const baseUrl = `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+  // format 쿼리 파라미터 추가 (캐시 키에 포함)
+  if (format) {
+    return `${baseUrl}?format=${format}`
+  }
+  return baseUrl
 }
 
 export interface PrefetchOptions {
   preferCompressed?: boolean
+  format?: 'raw' | 'original'
   metadata?: DicomPixelMetadata
 }
 
@@ -55,8 +62,11 @@ export async function prefetchFrameBatch(
 ): Promise<number> {
   if (frameNumbers.length === 0) return 0
 
+  const format = options?.format
+
   const uncachedFrames = frameNumbers.filter((frameNumber) => {
-    const url = buildFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+    // format을 포함한 URL로 캐시 키 생성
+    const url = buildFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber, format)
     return !hasPixelData(url)
   })
 
@@ -71,9 +81,9 @@ export async function prefetchFrameBatch(
 
   try {
     if (preferCompressed && metadata) {
-      return await prefetchWithCompression(studyUid, seriesUid, sopInstanceUid, frameNumbers, uncachedFrames, metadata, onProgress)
+      return await prefetchWithCompression(studyUid, seriesUid, sopInstanceUid, frameNumbers, uncachedFrames, metadata, onProgress, format)
     }
-    return await prefetchRawPixels(studyUid, seriesUid, sopInstanceUid, frameNumbers, uncachedFrames, onProgress)
+    return await prefetchRawPixels(studyUid, seriesUid, sopInstanceUid, frameNumbers, uncachedFrames, onProgress, format)
   } catch (error) {
     if (DEBUG_PREFETCHER) console.error('[WadoRsBatchPrefetcher] Prefetch failed:', error)
     throw error
@@ -87,11 +97,12 @@ async function prefetchWithCompression(
   frameNumbers: number[],
   uncachedFrames: number[],
   metadata: DicomPixelMetadata,
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  format?: 'raw' | 'original'
 ): Promise<number> {
   const frameDataMap = await retrieveFrameBatchWithMetadata(
     studyUid, seriesUid, sopInstanceUid, uncachedFrames,
-    { preferCompressed: true }
+    { preferCompressed: true, format }
   )
 
   let cached = frameNumbers.length - uncachedFrames.length
@@ -99,7 +110,8 @@ async function prefetchWithCompression(
   let compressedBytes = 0
 
   for (const [frameNumber, frameData] of frameDataMap) {
-    const url = buildFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+    // format을 포함한 URL로 캐시 키 생성
+    const url = buildFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber, format)
     let pixelData: ArrayBuffer = frameData.data
     compressedBytes += frameData.data.byteLength
 
@@ -134,15 +146,17 @@ async function prefetchRawPixels(
   sopInstanceUid: string,
   frameNumbers: number[],
   uncachedFrames: number[],
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  format?: 'raw' | 'original'
 ): Promise<number> {
-  const frameDataMap = await retrieveFrameBatch(studyUid, seriesUid, sopInstanceUid, uncachedFrames)
+  const frameDataMap = await retrieveFrameBatch(studyUid, seriesUid, sopInstanceUid, uncachedFrames, format)
 
   let cached = frameNumbers.length - uncachedFrames.length
   let bytesCached = 0
 
   for (const [frameNumber, pixelData] of frameDataMap) {
-    const url = buildFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+    // format을 포함한 URL로 캐시 키 생성
+    const url = buildFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber, format)
     cachePixelData(url, pixelData)
     cached++
     bytesCached += pixelData.byteLength

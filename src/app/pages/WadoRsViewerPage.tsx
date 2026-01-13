@@ -16,6 +16,7 @@ import {
   WadoRsBulkDataSlot,
   WADO_RS_BULKDATA_TOOL_GROUP_ID,
   BatchSizeTestPanel,
+  FormatSelectorPanel,
 } from '@/features/dicom-viewer-wado-rs-bulkdata'
 import { initCornerstone } from '@/lib/cornerstone/initCornerstone'
 import { BaseViewerLayout, useViewerPage, wadoRsBulkDataStrategy } from '@/features/dicom-viewer-shared'
@@ -45,6 +46,7 @@ export default function WadoRsViewerPage() {
 
   // WADO-RS BulkData 전용 store
   const {
+    layout: storeLayout,
     globalFps,
     setGlobalFps,
     setLayout: setStoreLayout,
@@ -66,6 +68,7 @@ export default function WadoRsViewerPage() {
       seriesInstanceUid: seriesInstanceUid || '',
       numberOfFrames: inst.numberOfFrames || 1,
       instanceNumber: inst.instanceNumber,
+      transferSyntaxUid: inst.transferSyntaxUid,
     })),
     [data?.instances, studyInstanceUid, seriesInstanceUid]
   )
@@ -87,7 +90,7 @@ export default function WadoRsViewerPage() {
     handleThumbnailError,
   } = useViewerPage({
     instances,
-    initialLayout: '1x1',
+    initialLayout: storeLayout,
     initialFilter: 'playable',
     onLayoutChange: setStoreLayout,
     onThumbnailLoad: markThumbnailLoaded,
@@ -210,7 +213,7 @@ export default function WadoRsViewerPage() {
     setLayout(newLayout)
 
     if (filteredInstances.length && studyInstanceUid && seriesInstanceUid) {
-      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : 16
+      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : newLayout === '4x4' ? 16 : 25
       filteredInstances.slice(0, newSlots).forEach((instance, index) => {
         const instanceSummary: WadoRsBulkDataInstanceSummary = {
           sopInstanceUid: instance.sopInstanceUid,
@@ -255,7 +258,12 @@ export default function WadoRsViewerPage() {
       onThumbnailLoad={handleThumbnailLoad}
       onThumbnailError={handleThumbnailError}
       renderSlot={renderSlot}
-      extraControls={<BatchSizeTestPanel />}
+      extraControls={
+        <>
+          <FormatSelectorPanel />
+          <BatchSizeTestPanel />
+        </>
+      }
     />
   )
 }

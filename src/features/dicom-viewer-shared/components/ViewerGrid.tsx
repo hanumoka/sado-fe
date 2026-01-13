@@ -2,7 +2,7 @@
  * ViewerGrid - 공유 뷰어 그리드 컴포넌트
  *
  * 모든 DICOM 뷰어에서 공통으로 사용하는 그리드 레이아웃 UI
- * - 1x1, 2x2, 3x3, 4x4 레이아웃 지원
+ * - 1x1, 2x2, 3x3, 4x4, 5x5 레이아웃 지원
  * - 슬롯 선택 상태 표시
  * - Render prop으로 슬롯 컴포넌트 주입
  */
@@ -23,6 +23,8 @@ function getGridClass(layout: GridLayout): string {
       return 'grid-cols-3 grid-rows-3'
     case '4x4':
       return 'grid-cols-4 grid-rows-4'
+    case '5x5':
+      return 'grid-cols-5 grid-rows-5'
     default:
       return 'grid-cols-1 grid-rows-1'
   }

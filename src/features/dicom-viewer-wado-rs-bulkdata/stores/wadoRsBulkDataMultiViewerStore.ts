@@ -8,6 +8,7 @@
  * API: WADO-RS BulkData (cornerstoneDICOMImageLoader wadors: scheme 사용)
  */
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   WadoRsBulkDataGridLayout,
   WadoRsBulkDataInstanceSummary,
@@ -16,12 +17,14 @@ import type {
   WadoRsBulkDataSlotPerformanceStats,
   WadoRsBulkDataPreloadPerformance,
 } from '../types/wadoRsBulkDataTypes'
+import type { BulkDataFormat } from '../utils/wadoRsBulkDataImageIdHelper'
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoRsBulkDataImageId } from '../utils/wadoRsBulkDataImageIdHelper'
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
 import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
+import { clearPixelDataCache } from '../utils/wadoRsPixelDataCache'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_STORE = false
@@ -60,6 +63,8 @@ function createEmptySlotState(): WadoRsBulkDataSlotState {
     error: null,
     metadataError: null,
     performanceStats: createEmptyPerformanceStats(),
+    // Stack 재로드 트리거
+    stackVersion: 0,
   }
 }
 
@@ -76,17 +81,22 @@ function getMaxSlots(layout: WadoRsBulkDataGridLayout): number {
       return 9
     case '4x4':
       return 16
+    case '5x5':
+      return 25
     default:
       return 1
   }
 }
 
+// 최대 슬롯 수 (5x5 = 25)
+const MAX_TOTAL_SLOTS = 25
+
 /**
- * 초기 슬롯 상태 맵 생성 (최대 16개)
+ * 초기 슬롯 상태 맵 생성 (최대 25개)
  */
 function createInitialSlots(): Record<number, WadoRsBulkDataSlotState> {
   const slots: Record<number, WadoRsBulkDataSlotState> = {}
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
     slots[i] = createEmptySlotState()
   }
   return slots
@@ -102,6 +112,7 @@ interface WadoRsBulkDataMultiViewerActions {
   // 레이아웃 관리
   setLayout: (layout: WadoRsBulkDataGridLayout) => void
   setGlobalFps: (fps: number) => void
+  setGlobalFormat: (format: BulkDataFormat) => void
 
   // 배치 테스트용
   setBatchSize: (size: number) => void
@@ -252,10 +263,13 @@ function getConcurrentPreloadsForLayout(layout: WadoRsBulkDataGridLayout): numbe
 
 // ==================== Store 구현 ====================
 
-export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewerStore>((set, get) => ({
+export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewerStore>()(
+  persist(
+    (set, get) => ({
   // 초기 상태
-  layout: '1x1',
+  layout: '1x1' as const,
   globalFps: 30,
+  globalFormat: 'original' as BulkDataFormat,  // BulkData 포맷 (original: 원본 인코딩, raw: 디코딩된 픽셀)
   slots: createInitialSlots(),
   availableInstances: [],
 
@@ -272,17 +286,111 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   // ==================== 레이아웃 관리 ====================
 
   setLayout: (layout) => {
-    set({ layout })
+    const currentLayout = get().layout
+    if (currentLayout === layout) return
+
+    // 레이아웃 변경 시: 재생 중지 + 캐시 클리어 + 슬롯 리셋
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Layout changed: ${currentLayout} → ${layout}, resetting...`)
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. 픽셀 데이터 캐시 클리어
+    clearPixelDataCache()
+
+    // 3. 모든 슬롯 전체 리셋 (캐시와 상태 동기화)
+    // 캐시 클리어 시 상태도 함께 리셋하여 캐시-상태 불일치 방지
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
+    }
+
+    set({ layout, slots: resetSlots })
   },
 
   setGlobalFps: (fps) => {
     set({ globalFps: Math.max(1, Math.min(120, fps)) })
   },
 
+  setGlobalFormat: (format) => {
+    const currentFormat = get().globalFormat
+    if (currentFormat === format) return
+
+    // 포맷 변경 시: 재생 중지 + 캐시 클리어 + 슬롯 리셋
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Format changed: ${currentFormat} → ${format}, resetting...`)
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. 픽셀 데이터 캐시 클리어 (캐시 키에 format이 포함되어 있으므로 필요)
+    clearPixelDataCache()
+
+    // 3. 모든 슬롯 프리로드 상태 리셋 (format 변경은 전체 리셋 필요)
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
+    }
+
+    set({ globalFormat: format, slots: resetSlots })
+  },
+
   // ==================== 배치 테스트용 ====================
 
   setBatchSize: (size) => {
-    set({ batchSize: Math.max(1, Math.min(50, size)) })
+    const newSize = Math.max(1, Math.min(50, size))
+    const currentSize = get().batchSize
+    if (currentSize === newSize) return
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. 픽셀 데이터 캐시 클리어
+    clearPixelDataCache()
+
+    // 3. 모든 슬롯 전체 리셋 (캐시와 상태 동기화)
+    // 캐시 클리어 시 상태도 함께 리셋하여 캐시-상태 불일치 방지
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
+    }
+
+    set({ batchSize: newSize, slots: resetSlots })
   },
 
   setPreloadPerformance: (perf) => {
@@ -770,6 +878,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       // 메타데이터 가져오기 (압축 데이터 디코딩용)
       const pixelMetadata = getCachedMetadata(sopInstanceUid)
 
+      // globalFormat 읽기 (format 선택 기능 연결)
+      const globalFormat = get().globalFormat
+
       await prefetchAllFrames(
         studyInstanceUid,
         seriesInstanceUid,
@@ -783,7 +894,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         },
         undefined, // onFrameLoaded
         {
-          preferCompressed: false,
+          preferCompressed: globalFormat === 'original',
+          format: globalFormat,
           metadata: pixelMetadata,
         }
       )
@@ -794,6 +906,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       // Fetch Interceptor가 캐시된 PixelData 반환 → HTTP 요청 없음
       if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 2: Loading images via Cornerstone (cache hit expected)`)
 
+      // globalFormat 다시 읽기 (Phase 2에서 imageId 생성용)
+      const globalFormatForImageId = get().globalFormat
+
       let loadedCount = 0
       for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
         const batch = []
@@ -802,7 +917,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
             studyInstanceUid,
             seriesInstanceUid,
             sopInstanceUid,
-            j // 0-based frame number
+            j, // 0-based frame number
+            globalFormatForImageId // format 파라미터 전달
           )
 
           batch.push(
@@ -1073,4 +1189,18 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       allThumbnailsLoaded: false,
     })
   },
-}))
+    }),
+    {
+      name: 'wado-rs-bulkdata-viewer-settings',
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        layout: state.layout,
+        globalFps: state.globalFps,
+      }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<WadoRsBulkDataMultiViewerState>),
+      }),
+    }
+  )
+)

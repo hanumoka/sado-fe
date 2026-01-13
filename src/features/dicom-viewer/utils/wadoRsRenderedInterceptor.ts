@@ -37,6 +37,7 @@ let passedThroughRequests = 0
  *
  * 커스텀 로더가 요청하는 URL 형식:
  * http://localhost:10201/dicomweb/studies/{studyUid}/series/{seriesUid}/instances/{sopInstanceUid}/frames/{frameNumber}/rendered
+ * http://localhost:10201/dicomweb/.../frames/{frameNumber}/rendered?resolution=256
  *
  * @param url 요청 URL
  * @returns WADO-RS Rendered 프레임 요청 여부
@@ -44,8 +45,10 @@ let passedThroughRequests = 0
 function isWadoRsRenderedRequest(url: string): boolean {
   // /dicomweb/studies/.../instances/.../frames/N/rendered 패턴
   // 단일 프레임 요청만 인터셉트 (배치 요청 /frames/1,2,3/rendered는 제외)
+  // 쿼리 파라미터 제거 후 매칭 (resolution=256 등)
+  const urlWithoutQuery = url.split('?')[0]
   const pattern = /\/dicomweb\/studies\/[^/]+\/series\/[^/]+\/instances\/[^/]+\/frames\/\d+\/rendered$/
-  return pattern.test(url)
+  return pattern.test(urlWithoutQuery)
 }
 
 /**

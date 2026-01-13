@@ -8,6 +8,7 @@
  * API: WADO-URI (cornerstoneWADOImageLoader 사용)
  */
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   WadoUriGridLayout,
   WadoUriInstanceSummary,
@@ -69,17 +70,22 @@ function getMaxSlots(layout: WadoUriGridLayout): number {
       return 9
     case '4x4':
       return 16
+    case '5x5':
+      return 25
     default:
       return 1
   }
 }
 
+// 최대 슬롯 수 (5x5 = 25)
+const MAX_TOTAL_SLOTS = 25
+
 /**
- * 초기 슬롯 상태 맵 생성 (최대 16개)
+ * 초기 슬롯 상태 맵 생성 (최대 25개)
  */
 function createInitialSlots(): Record<number, WadoUriSlotState> {
   const slots: Record<number, WadoUriSlotState> = {}
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
     slots[i] = createEmptySlotState()
   }
   return slots
@@ -204,9 +210,11 @@ function getBatchSizeForLayout(layout: WadoUriGridLayout): number {
 
 // ==================== Store 구현 ====================
 
-export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, get) => ({
+export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>()(
+  persist(
+    (set, get) => ({
   // 초기 상태
-  layout: '1x1',
+  layout: '1x1' as const,
   globalFps: 30,
   slots: createInitialSlots(),
   availableInstances: [],
@@ -840,4 +848,18 @@ export const useWadoUriMultiViewerStore = create<WadoUriMultiViewerStore>((set, 
       allThumbnailsLoaded: false,
     })
   },
-}))
+    }),
+    {
+      name: 'wado-uri-viewer-settings',
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        layout: state.layout,
+        globalFps: state.globalFps,
+      }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<WadoUriMultiViewerState>),
+      }),
+    }
+  )
+)

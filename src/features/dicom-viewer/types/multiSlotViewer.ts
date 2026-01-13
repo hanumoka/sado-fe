@@ -7,8 +7,8 @@
 
 // ==================== 레이아웃 타입 ====================
 
-/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4) */
-export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4'
+/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4, 5x5) */
+export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
 
 /** API 타입 (DICOM 이미지 로딩 방식) */
 export type ApiType = 'wado-rs' | 'wado-uri'
@@ -71,9 +71,16 @@ export interface CornerstoneSlotState {
   loadedFrames: Set<number>
   /** 버퍼링 중 여부 (재생 일시 중단) */
   isBuffering: boolean
+
+  // Stack 재로드 트리거
+  /** Stack 버전 (캐시 클리어 시 증가하여 Stack 재설정 트리거) */
+  stackVersion: number
 }
 
 // ==================== Store 상태 ====================
+
+/** 해상도 모드 (auto: 레이아웃별 자동, manual: 수동 선택) */
+export type ResolutionMode = 'auto' | 'manual'
 
 /** Cornerstone Multi Viewer 전체 상태 */
 export interface CornerstoneMultiViewerState {
@@ -85,6 +92,8 @@ export interface CornerstoneMultiViewerState {
   globalFps: number
   /** 전역 해상도 설정 (512=PNG, 256=JPEG, 128=JPEG) */
   globalResolution: number
+  /** 해상도 모드 (auto: 레이아웃별 자동, manual: 수동 선택) */
+  resolutionMode: ResolutionMode
   /** 슬롯 상태 (최대 16개) */
   slots: Record<number, CornerstoneSlotState>
   /** 사용 가능한 인스턴스 목록 */

@@ -81,6 +81,7 @@ export interface Instance {
   columns?: number // 이미지 너비
   numberOfFrames?: number // 멀티프레임 이미지의 프레임 수
   frameRate?: number // 프레임 레이트 (fps)
+  transferSyntaxUid?: string // Transfer Syntax UID (압축 형식)
   storagePath?: string // 스토리지 경로
   storageUri: string // Pre-signed URL 또는 Proxy URL
   fileSize?: number // 파일 크기 (bytes)

@@ -633,10 +633,16 @@ export function getFrameListUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumbers: number[]
+  frameNumbers: number[],
+  format?: 'raw' | 'original'
 ): string {
   const frameList = frameNumbers.join(',')
-  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}`
+  const baseUrl = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}`
+  // format 쿼리 파라미터 추가
+  if (format) {
+    return `${baseUrl}?format=${format}`
+  }
+  return baseUrl
 }
 
 /**
@@ -660,7 +666,8 @@ export async function retrieveFrameBatch(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumbers: number[]
+  frameNumbers: number[],
+  format?: 'raw' | 'original'
 ): Promise<Map<number, ArrayBuffer>> {
   if (frameNumbers.length === 0) {
     return new Map()
@@ -674,7 +681,7 @@ export async function retrieveFrameBatch(
     return result
   }
 
-  const url = getFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers)
+  const url = getFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers, format)
 
   const response = await fetch(url, {
     headers: getDicomWebHeaders('multipart/related; type="application/octet-stream"'),
@@ -698,6 +705,12 @@ export interface FrameRetrieveOptions {
    * - false: 서버가 디코딩하여 raw pixels 반환 (기본값)
    */
   preferCompressed?: boolean
+  /**
+   * 데이터 포맷 선택 (URL 쿼리 파라미터로 전달)
+   * - raw: 디코딩된 픽셀 데이터
+   * - original: 원본 인코딩 데이터
+   */
+  format?: 'raw' | 'original'
 }
 
 /**
@@ -742,13 +755,15 @@ export async function retrieveFrameBatchWithMetadata(
     ? 'multipart/related; type="image/jp2", multipart/related; type="application/octet-stream"'
     : 'multipart/related; type="application/octet-stream"'
 
-  const url = getFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers)
+  // format 옵션을 URL에 추가
+  const url = getFrameListUrl(studyUid, seriesUid, sopInstanceUid, frameNumbers, options?.format)
 
   if (DEBUG_SERVICE) {
     console.log('[DicomWebService] retrieveFrameBatchWithMetadata:', {
       url,
       frameNumbers,
       preferCompressed: options?.preferCompressed,
+      format: options?.format,
       acceptHeader,
     })
   }

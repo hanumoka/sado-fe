@@ -395,6 +395,9 @@ export default function StorageManagePage() {
                 <div key={task.instanceId} className="border border-gray-100 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
+                      <span className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700 font-medium">
+                        T{task.tenantId}
+                      </span>
                       <span className="text-sm font-medium text-gray-900">
                         {task.modality || 'Unknown'} - {task.studyDescription || 'No description'}
                       </span>
@@ -451,6 +454,7 @@ export default function StorageManagePage() {
                 <thead>
                   <tr className="text-left text-sm text-gray-500 border-b border-gray-100">
                     <th className="pb-2 font-medium">시간</th>
+                    <th className="pb-2 font-medium">테넌트</th>
                     <th className="pb-2 font-medium">Modality</th>
                     <th className="pb-2 font-medium">Study</th>
                     <th className="pb-2 font-medium text-right">크기</th>
@@ -462,6 +466,11 @@ export default function StorageManagePage() {
                     <tr key={task.instanceId} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-2 text-sm text-gray-600">
                         {formatTime(task.uploadedAt)}
+                      </td>
+                      <td className="py-2">
+                        <span className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700 font-medium">
+                          T{task.tenantId}
+                        </span>
                       </td>
                       <td className="py-2 text-sm font-medium text-gray-900">
                         {task.modality || '-'}

@@ -21,6 +21,7 @@ export function ViewerHeader({
   layout,
   onLayoutChange,
   onBack,
+  layoutOptions = LAYOUT_OPTIONS,  // 기본값: 전체 레이아웃 옵션
 }: ViewerHeaderProps) {
   const theme = VIEWER_THEMES[accentColor]
 
@@ -69,7 +70,7 @@ export function ViewerHeader({
         {/* 오른쪽: 그리드 레이아웃 선택 */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-400 mr-2">Layout:</span>
-          {LAYOUT_OPTIONS.map((option) => (
+          {layoutOptions.map((option) => (
             <button
               key={option.value}
               onClick={() => onLayoutChange(option.value)}

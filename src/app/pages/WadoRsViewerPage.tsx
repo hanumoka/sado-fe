@@ -19,9 +19,14 @@ import {
   FormatSelectorPanel,
 } from '@/features/dicom-viewer-wado-rs-bulkdata'
 import { initCornerstone } from '@/lib/cornerstone/initCornerstone'
-import { BaseViewerLayout, useViewerPage, wadoRsBulkDataStrategy } from '@/features/dicom-viewer-shared'
+import { BaseViewerLayout, useViewerPage, wadoRsBulkDataStrategy, LAYOUT_OPTIONS } from '@/features/dicom-viewer-shared'
 import type { WadoRsBulkDataInstanceSummary } from '@/features/dicom-viewer-wado-rs-bulkdata'
 import type { BaseInstanceInfo, GridLayout } from '@/features/dicom-viewer-shared'
+
+// WADO-RS BulkData는 3x3까지만 지원 (메모리/CPU 최적화)
+const WADO_RS_LAYOUT_OPTIONS = LAYOUT_OPTIONS.filter(
+  (option) => !['4x4', '5x5'].includes(option.value)
+)
 
 // 디버그 로그 플래그
 const DEBUG_PAGE = false
@@ -272,6 +277,7 @@ export default function WadoRsViewerPage() {
           <BatchSizeTestPanel />
         </>
       }
+      layoutOptions={WADO_RS_LAYOUT_OPTIONS}
     />
   )
 }

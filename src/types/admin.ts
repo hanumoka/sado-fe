@@ -156,6 +156,7 @@ export interface UploadTask {
   fileSize: number
   uploadedAt: string // ISO datetime
   renderingStatus: 'NONE' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  tenantId: number
 }
 
 /**
@@ -172,6 +173,7 @@ export interface RenderingTask {
   renderedSize?: number
   startedAt?: string // ISO datetime
   progressPercent: number
+  tenantId: number
 }
 
 /**

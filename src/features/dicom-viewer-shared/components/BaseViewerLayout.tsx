@@ -16,6 +16,7 @@ import type {
   BaseInstanceInfo,
   GridLayout,
   InstanceFilter,
+  LayoutOption,
   ResolutionMode,
   ViewerLoaderStrategy,
 } from '../types/viewerTypes'
@@ -71,6 +72,9 @@ export interface BaseViewerLayoutProps<T extends BaseInstanceInfo> {
 
   // 추가 컨트롤 (선택적)
   extraControls?: React.ReactNode
+
+  // 커스텀 레이아웃 옵션 (선택적 - 특정 뷰어에서 레이아웃 제한용)
+  layoutOptions?: LayoutOption[]
 }
 
 export function BaseViewerLayout<T extends BaseInstanceInfo>({
@@ -104,6 +108,7 @@ export function BaseViewerLayout<T extends BaseInstanceInfo>({
   onThumbnailError,
   renderSlot,
   extraControls,
+  layoutOptions,
 }: BaseViewerLayoutProps<T>) {
   const { accentColor, displayName } = strategy
 
@@ -130,6 +135,7 @@ export function BaseViewerLayout<T extends BaseInstanceInfo>({
         layout={layout}
         onLayoutChange={onLayoutChange}
         onBack={onBack}
+        layoutOptions={layoutOptions}
       />
 
       {/* Main Content */}

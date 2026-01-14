@@ -191,6 +191,8 @@ export interface ViewerHeaderProps {
   layout: GridLayout
   onLayoutChange: (layout: GridLayout) => void
   onBack: () => void
+  /** 커스텀 레이아웃 옵션 (기본: LAYOUT_OPTIONS) - 특정 뷰어에서 레이아웃 제한용 */
+  layoutOptions?: LayoutOption[]
 }
 
 /** 해상도 모드 */

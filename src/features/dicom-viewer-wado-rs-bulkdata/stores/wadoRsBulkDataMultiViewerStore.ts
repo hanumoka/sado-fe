@@ -20,11 +20,12 @@ import type {
 } from '../types/wadoRsBulkDataTypes'
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
-import { createWadoRsBulkDataImageId } from '../utils/wadoRsBulkDataImageIdHelper'
+import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
-import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
-import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
-import { clearPixelDataCache } from '../utils/wadoRsPixelDataCache'
+import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
+// 배치 프리페처 비활성화: Cornerstone Pool Manager 직접 활용
+// import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
+// import { clearPixelDataCache } from '../utils/wadoRsPixelDataCache'
 import { clearImageCache as clearRenderedCache } from '@/lib/cornerstone/wadoRsRenderedLoader'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
@@ -74,6 +75,7 @@ function createEmptySlotState(): WadoRsBulkDataSlotState {
 
 /**
  * 레이아웃별 최대 슬롯 수
+ * WADO-RS BulkData는 3x3까지만 지원 (메모리/CPU 최적화)
  */
 function getMaxSlots(layout: WadoRsBulkDataGridLayout): number {
   switch (layout) {
@@ -83,20 +85,17 @@ function getMaxSlots(layout: WadoRsBulkDataGridLayout): number {
       return 4
     case '3x3':
       return 9
-    case '4x4':
-      return 16
-    case '5x5':
-      return 25
+    // 4x4, 5x5는 UI에서 제한되어 더 이상 도달 불가
     default:
       return 1
   }
 }
 
-// 최대 슬롯 수 (5x5 = 25)
-const MAX_TOTAL_SLOTS = 25
+// 최대 슬롯 수 (3x3 = 9, WADO-RS BulkData는 3x3까지만 지원)
+const MAX_TOTAL_SLOTS = 9
 
 /**
- * 초기 슬롯 상태 맵 생성 (최대 25개)
+ * 초기 슬롯 상태 맵 생성 (최대 9개)
  */
 function createInitialSlots(): Record<number, WadoRsBulkDataSlotState> {
   const slots: Record<number, WadoRsBulkDataSlotState> = {}
@@ -111,6 +110,9 @@ function createInitialSlots(): Record<number, WadoRsBulkDataSlotState> {
 // PreloadPerformance는 타입 파일에서 WadoRsBulkDataPreloadPerformance로 정의됨
 // 하위 호환성을 위해 별칭 export
 export type PreloadPerformance = WadoRsBulkDataPreloadPerformance
+
+// getBatchSizeForLayout 제거: Pool Manager가 동시성 제어하므로 더 이상 필요 없음
+// 배치 크기는 preloadSlotFrames에서 고정값 사용
 
 interface WadoRsBulkDataMultiViewerActions {
   // 레이아웃 관리
@@ -281,53 +283,31 @@ async function waitForInitialBuffer(
   })
 }
 
-/**
- * 레이아웃에 따른 프리로드 배치 크기 결정
- */
-function getBatchSizeForLayout(layout: WadoRsBulkDataGridLayout): number {
-  switch (layout) {
-    case '1x1':
-      return 6
-    case '2x2':
-      return 4
-    case '3x3':
-      return 3
-    case '4x4':
-      return 2
-    default:
-      return 4
-  }
-}
+// getBatchSizeForLayout 제거: Pool Manager가 동시성 제어하므로 배치 크기 고정 (BATCH_SIZE = 10)
 
 /**
  * 레이아웃에 따른 동시 프리로드 슬롯 수 결정
  *
- * Original/Raw 포맷의 캐시 경합 방지를 위해 동시 프리로드 수를 제한
- * (Rendered 포맷은 배치 프리페치를 스킵하므로 영향 없음)
+ * 배치 프리페처 비활성화 후 Cornerstone Pool Manager가 동시성 제어
+ * → 슬롯 레벨에서는 모든 슬롯 동시 시작 가능
  *
- * 문제:
- * - 2x2에서 4개 슬롯 × 4개 동시 배치 = 16개 동시 HTTP 요청
- * - 500MB 캐시 제한 → LRU eviction → 캐시 미스 → 로드 지연
- * - 일부 슬롯만 isStackLoaded=true → 일부만 재생됨
+ * Pool Manager가 실제 네트워크 요청과 디코딩을 제어하므로
+ * 슬롯 레벨 제한은 불필요 (메모리 스파이크 방지됨)
  *
- * 해결: 동시 프리로드 슬롯 수를 레이아웃의 한 행/열 크기로 제한
+ * WADO-RS BulkData는 3x3까지만 지원 (메모리/CPU 최적화)
  */
 function getConcurrentPreloadsForLayout(layout: WadoRsBulkDataGridLayout): number {
-  // 캐시 경합 완화를 위해 동시 프리로드 수를 2개로 제한
-  // 3x3 이상 레이아웃에서 캐시 eviction으로 인한 일부 슬롯 정지 문제 해결
+  // Pool Manager가 동시성 제어하므로 모든 슬롯 동시 프리로드 가능
   switch (layout) {
     case '1x1':
       return 1
     case '2x2':
-      return 2 // 2개씩 순차 프리로드 (캐시 경합 완화)
+      return 4
     case '3x3':
-      return 2 // 3 → 2로 감소 (캐시 경합 완화)
-    case '4x4':
-      return 2 // 4 → 2로 감소 (캐시 경합 완화)
-    case '5x5':
-      return 2 // 5 → 2로 감소 (캐시 경합 완화)
+      return 9
+    // 4x4, 5x5는 UI에서 제한되어 더 이상 도달 불가
     default:
-      return 2
+      return 4
   }
 }
 
@@ -366,11 +346,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     // 1. 모든 재생 중지
     get().pauseAll()
 
-    // 2. 픽셀 데이터 캐시 클리어
-    clearPixelDataCache()
-
-    // 3. 모든 슬롯 전체 리셋 (캐시와 상태 동기화)
-    // 캐시 클리어 시 상태도 함께 리셋하여 캐시-상태 불일치 방지
+    // 2. 모든 슬롯 전체 리셋 (Cornerstone 캐시는 LRU eviction으로 자동 관리)
     // stackVersion 증가로 Stack 재설정 트리거
     const slots = get().slots
     const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
@@ -405,11 +381,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     // 1. 모든 재생 중지
     get().pauseAll()
 
-    // 2. 캐시 클리어 (포맷에 따라 다른 캐시)
+    // 2. Rendered 캐시만 클리어 (BulkData는 Cornerstone 캐시 사용, LRU eviction)
     if (format === 'rendered') {
       clearRenderedCache()
-    } else {
-      clearPixelDataCache()
     }
 
     // 3. 모든 슬롯 프리로드 상태 리셋 (format 변경은 전체 리셋 필요)
@@ -477,11 +451,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     // 1. 모든 재생 중지
     get().pauseAll()
 
-    // 2. 픽셀 데이터 캐시 클리어
-    clearPixelDataCache()
-
-    // 3. 모든 슬롯 전체 리셋 (캐시와 상태 동기화)
-    // 캐시 클리어 시 상태도 함께 리셋하여 캐시-상태 불일치 방지
+    // 2. 모든 슬롯 전체 리셋 (Cornerstone 캐시는 LRU eviction으로 자동 관리)
     // stackVersion 증가로 Stack 재설정 트리거
     const slots = get().slots
     const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
@@ -1010,82 +980,54 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
 
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
-      const BATCH_SIZE = get().batchSize || getBatchSizeForLayout(get().layout)
-      const PREFETCH_BATCH_SIZE = 10 // 배치 API 호출 시 프레임 수
+      const BATCH_SIZE = 10 // Pool Manager가 동시성 제어하므로 배치 크기 고정
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone wadors 로더가 PixelData를 디코딩할 수 있음
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
       await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Metadata cached for slot ${slotId}`)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Metadata cached for slot ${slotId}`)
 
-      // Phase 1: 배치 API로 PixelData 프리페치 (캐시에 저장)
-      // HTTP 요청 90% 절감: 100프레임 = 10회 요청 (vs 기존 100회)
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1: Prefetching ${numberOfFrames} frames via batch API (batch size: ${PREFETCH_BATCH_SIZE})`)
+      // Cornerstone 로더로 직접 이미지 로드
+      // Pool Manager가 동시성 제어 → 메모리 스파이크 방지
+      // 배치 프리페처 제거로 중복 캐싱 없음 (Cornerstone 캐시만 사용)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Loading ${numberOfFrames} frames via Cornerstone (Pool Manager controlled)`)
 
-      // 메타데이터 가져오기 (압축 데이터 디코딩용)
-      const pixelMetadata = getCachedMetadata(sopInstanceUid)
-
-      // globalFormat은 이 시점에서 'jpeg-baseline' | 'original' | 'raw' (rendered 제외됨)
-      await prefetchAllFrames(
+      // globalFormat: 'jpeg-baseline' | 'original' | 'raw' (rendered 제외됨)
+      const imageIds = createWadoRsBulkDataImageIds(
         studyInstanceUid,
         seriesInstanceUid,
         sopInstanceUid,
         numberOfFrames,
-        PREFETCH_BATCH_SIZE,
-        (loaded, total) => {
-          // 프리페치 진행률: 0% ~ 50%
-          const progress = Math.round((loaded / total) * 50)
-          get().updateSlotPreloadProgress(slotId, progress)
-        },
-        undefined, // onFrameLoaded 비활성화 - 1600+ set() 호출로 race condition 유발
-        {
-          preferCompressed: globalFormat === 'original',
-          format: globalFormat,
-          metadata: pixelMetadata,
-        }
+        globalFormat
       )
 
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1 complete: PixelData cached`)
-
-      // Phase 2: Cornerstone 로더로 이미지 로드 (캐시 히트 발생!)
-      // Fetch Interceptor가 캐시된 PixelData 반환 → HTTP 요청 없음
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 2: Loading images via Cornerstone (cache hit expected)`)
-
-      // globalFormat 재사용 (이미 'rendered'가 제외됨: 'jpeg-baseline' | 'original' | 'raw')
       let loadedCount = 0
-      for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
-        const batch = []
-        for (let j = i; j < Math.min(i + BATCH_SIZE, numberOfFrames); j++) {
-          const imageId = createWadoRsBulkDataImageId(
-            studyInstanceUid,
-            seriesInstanceUid,
-            sopInstanceUid,
-            j, // 0-based frame number
-            globalFormat // format 파라미터 전달 (타입: 'jpeg-baseline' | 'original' | 'raw')
-          )
 
-          batch.push(
+      // 배치 단위로 로드 (진행률 표시용)
+      for (let i = 0; i < imageIds.length; i += BATCH_SIZE) {
+        const batch = imageIds.slice(i, i + BATCH_SIZE)
+
+        await Promise.all(
+          batch.map((imageId) =>
             loadWadoRsBulkDataImage(imageId)
               .then(() => {
                 loadedCount++
-                // Cornerstone 로딩 진행률: 50% ~ 100%
-                const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
+                // 10% 단위로만 업데이트 (리렌더링 최소화)
+                const progress = Math.floor((loadedCount / numberOfFrames) * 10) * 10
                 get().updateSlotPreloadProgress(slotId, progress)
               })
               .catch((error: unknown) => {
-                if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Failed to load frame ${j} for slot ${slotId}:`, error)
+                if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Failed to load frame for slot ${slotId}:`, error)
                 loadedCount++
-                const progress = 50 + Math.round((loadedCount / numberOfFrames) * 50)
+                const progress = Math.floor((loadedCount / numberOfFrames) * 10) * 10
                 get().updateSlotPreloadProgress(slotId, progress)
               })
           )
-        }
-
-        await Promise.all(batch)
+        )
       }
 
       get().finishSlotPreload(slotId)
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Preload completed for slot ${slotId} (batch API optimized)`)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Preload completed for slot ${slotId}`)
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)

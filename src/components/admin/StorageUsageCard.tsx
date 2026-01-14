@@ -1,94 +1,86 @@
 /**
  * StorageUsageCard.tsx
  *
- * 스토리지 사용량 카드 컴포넌트
- *
- * 기능:
- * - 전체 스토리지 사용량 표시
- * - Tier별 사용량 시각화 (HOT/WARM/COLD)
- * - 바이트를 사람이 읽기 쉬운 형식으로 변환
+ * 스토리지 사용량 표시 카드
  */
 
 import { HardDrive } from 'lucide-react'
-import { formatBytes } from '@/lib/utils'
 import type { StorageSummary } from '@/types'
 
 interface StorageUsageCardProps {
-  summary: StorageSummary
+  data: StorageSummary
+  isLoading?: boolean
 }
 
-export default function StorageUsageCard({ summary }: StorageUsageCardProps) {
-  const { totalSize, hotSize, warmSize, coldSize } = summary
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
 
-  // 각 Tier의 비율 계산
-  const hotPercent = totalSize > 0 ? (hotSize / totalSize) * 100 : 0
-  const warmPercent = totalSize > 0 ? (warmSize / totalSize) * 100 : 0
-  const coldPercent = totalSize > 0 ? (coldSize / totalSize) * 100 : 0
+export default function StorageUsageCard({ data, isLoading }: StorageUsageCardProps) {
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
+        <div className="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
+        <div className="h-8 bg-gray-200 rounded w-1/2 mb-4"></div>
+        <div className="h-4 bg-gray-200 rounded w-full"></div>
+      </div>
+    )
+  }
+
+  const totalSize = data.totalSize || 1 // Prevent division by zero
+  const hotPercent = (data.hotSize / totalSize) * 100
+  const warmPercent = (data.warmSize / totalSize) * 100
+  const coldPercent = (data.coldSize / totalSize) * 100
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center">
-          <div className="bg-purple-100 rounded-lg p-3">
-            <HardDrive className="h-6 w-6 text-purple-600" />
-          </div>
-          <div className="ml-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              스토리지 사용량
-            </h3>
-            <p className="text-sm text-gray-600">
-              총 {formatBytes(totalSize)}
-            </p>
-          </div>
+        <h3 className="text-lg font-semibold text-gray-900">스토리지 사용량</h3>
+        <div className="p-2 bg-blue-50 rounded-lg">
+          <HardDrive className="h-5 w-5 text-blue-600" />
         </div>
       </div>
 
-      {/* 진행바 */}
-      <div className="mb-4">
-        <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden flex">
-          <div
-            className="h-full bg-red-500"
-            style={{ width: `${hotPercent}%` }}
-            title={`HOT: ${formatBytes(hotSize)}`}
-          />
-          <div
-            className="h-full bg-yellow-500"
-            style={{ width: `${warmPercent}%` }}
-            title={`WARM: ${formatBytes(warmSize)}`}
-          />
-          <div
-            className="h-full bg-blue-500"
-            style={{ width: `${coldPercent}%` }}
-            title={`COLD: ${formatBytes(coldSize)}`}
-          />
-        </div>
+      <p className="text-3xl font-bold text-gray-900 mb-4">
+        {formatBytes(data.totalSize)}
+      </p>
+
+      {/* Progress Bar */}
+      <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+        <div
+          className="bg-red-500 transition-all"
+          style={{ width: `${hotPercent}%` }}
+          title={`HOT: ${formatBytes(data.hotSize)}`}
+        />
+        <div
+          className="bg-yellow-500 transition-all"
+          style={{ width: `${warmPercent}%` }}
+          title={`WARM: ${formatBytes(data.warmSize)}`}
+        />
+        <div
+          className="bg-blue-500 transition-all"
+          style={{ width: `${coldPercent}%` }}
+          title={`COLD: ${formatBytes(data.coldSize)}`}
+        />
       </div>
 
-      {/* Tier별 상세 정보 */}
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <div className="flex items-center mb-1">
-            <div className="w-3 h-3 bg-red-500 rounded-full mr-2" />
-            <span className="text-sm font-medium text-gray-700">HOT</span>
-          </div>
-          <p className="text-sm text-gray-600">{formatBytes(hotSize)}</p>
-          <p className="text-xs text-gray-500">{hotPercent.toFixed(1)}%</p>
+      {/* Legend */}
+      <div className="flex justify-between mt-4 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+          <span className="text-gray-600">HOT: {formatBytes(data.hotSize)}</span>
         </div>
-        <div>
-          <div className="flex items-center mb-1">
-            <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2" />
-            <span className="text-sm font-medium text-gray-700">WARM</span>
-          </div>
-          <p className="text-sm text-gray-600">{formatBytes(warmSize)}</p>
-          <p className="text-xs text-gray-500">{warmPercent.toFixed(1)}%</p>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
+          <span className="text-gray-600">WARM: {formatBytes(data.warmSize)}</span>
         </div>
-        <div>
-          <div className="flex items-center mb-1">
-            <div className="w-3 h-3 bg-blue-500 rounded-full mr-2" />
-            <span className="text-sm font-medium text-gray-700">COLD</span>
-          </div>
-          <p className="text-sm text-gray-600">{formatBytes(coldSize)}</p>
-          <p className="text-xs text-gray-500">{coldPercent.toFixed(1)}%</p>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+          <span className="text-gray-600">COLD: {formatBytes(data.coldSize)}</span>
         </div>
       </div>
     </div>

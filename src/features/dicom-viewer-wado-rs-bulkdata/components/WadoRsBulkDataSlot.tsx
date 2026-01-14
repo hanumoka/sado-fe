@@ -17,6 +17,7 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMultiViewerStore'
 import { handleDicomError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
+import { createWadoRsRenderedImageIds } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
 import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { prefetchFrameBatch } from '../utils/wadoRsBatchPrefetcher'
@@ -86,6 +87,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   // 전역 상태 및 액션
   const globalFps = useWadoRsBulkDataMultiViewerStore((state) => state.globalFps)
   const globalFormat = useWadoRsBulkDataMultiViewerStore((state) => state.globalFormat)
+  const globalResolution = useWadoRsBulkDataMultiViewerStore((state) => state.globalResolution)
   const allThumbnailsLoaded = useWadoRsBulkDataMultiViewerStore((state) => state.allThumbnailsLoaded)
   const assignInstanceToSlot = useWadoRsBulkDataMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useWadoRsBulkDataMultiViewerStore((state) => state.preloadSlotFrames)
@@ -231,43 +233,59 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         // 메타데이터 실패해도 계속 진행 (fallback 값 사용)
       }
 
-      // WADO-RS BulkData imageIds 생성 (globalFormat 적용)
-      const imageIds = createWadoRsBulkDataImageIds(
-        studyInstanceUid,
-        seriesInstanceUid,
-        sopInstanceUid,
-        numberOfFrames,
-        globalFormat  // format 파라미터 추가
-      )
-
-      // 초기 프레임 배치 프리페치 (캐시에 저장)
-      // setStack/loadImage 호출 전에 캐시해야 개별 HTTP 요청 방지
-      // 배치 크기 10: 단일 프레임 요청 방지 + 초기 로드 최적화
-      const INITIAL_BATCH_SIZE = 10
-      const initialFrameCount = Math.min(INITIAL_BATCH_SIZE, numberOfFrames)
-      const initialFrames = Array.from({ length: initialFrameCount }, (_, i) => i + 1)
-
-      // 캐시된 메타데이터 가져오기 (original 인코딩 디코딩에 필요)
-      const cachedMetadata = getCachedMetadata(sopInstanceUid)
-
-      try {
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Prefetching ${initialFrameCount} frames via batch API (format: ${globalFormat})...`)
-        await prefetchFrameBatch(
+      // Data Source에 따른 imageIds 생성
+      let imageIds: string[]
+      if (globalFormat === 'rendered') {
+        // Pre-rendered JPEG/PNG (resolution 지원)
+        imageIds = createWadoRsRenderedImageIds(
           studyInstanceUid,
           seriesInstanceUid,
           sopInstanceUid,
-          initialFrames,
-          undefined, // onProgress
-          {
-            format: globalFormat,
-            preferCompressed: globalFormat === 'original',
-            metadata: cachedMetadata,  // 메타데이터 전달 (original 인코딩 디코딩용)
-          }
+          numberOfFrames,
+          globalResolution
         )
-        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Initial frames prefetched`)
-      } catch (prefetchErr) {
-        // 프리페치 실패해도 계속 진행 (개별 요청으로 fallback)
-        if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] First frame prefetch failed:`, prefetchErr)
+      } else {
+        // WADO-RS BulkData (jpeg-baseline/original/raw)
+        imageIds = createWadoRsBulkDataImageIds(
+          studyInstanceUid,
+          seriesInstanceUid,
+          sopInstanceUid,
+          numberOfFrames,
+          globalFormat  // 'jpeg-baseline' | 'original' | 'raw'
+        )
+      }
+
+      // 초기 프레임 배치 프리페치 (캐시에 저장) - rendered가 아닐 때만
+      // rendered 포맷은 별도의 Rendered Loader가 직접 처리
+      if (globalFormat !== 'rendered') {
+        // setStack/loadImage 호출 전에 캐시해야 개별 HTTP 요청 방지
+        // 배치 크기 10: 단일 프레임 요청 방지 + 초기 로드 최적화
+        const INITIAL_BATCH_SIZE = 10
+        const initialFrameCount = Math.min(INITIAL_BATCH_SIZE, numberOfFrames)
+        const initialFrames = Array.from({ length: initialFrameCount }, (_, i) => i + 1)
+
+        // 캐시된 메타데이터 가져오기 (original 인코딩 디코딩에 필요)
+        const cachedMetadata = getCachedMetadata(sopInstanceUid)
+
+        try {
+          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Prefetching ${initialFrameCount} frames via batch API (format: ${globalFormat})...`)
+          await prefetchFrameBatch(
+            studyInstanceUid,
+            seriesInstanceUid,
+            sopInstanceUid,
+            initialFrames,
+            undefined, // onProgress
+            {
+              format: globalFormat,
+              preferCompressed: globalFormat === 'original',
+              metadata: cachedMetadata,  // 메타데이터 전달 (original 인코딩 디코딩용)
+            }
+          )
+          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Initial frames prefetched`)
+        } catch (prefetchErr) {
+          // 프리페치 실패해도 계속 진행 (개별 요청으로 fallback)
+          if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] First frame prefetch failed:`, prefetchErr)
+        }
       }
 
       try {
@@ -313,11 +331,13 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
           })
         }
 
-        setIsStackLoaded(true)
-        if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Stack loaded with ${imageIds.length} frames`)
-
-        // Viewport를 WadoRsBulkDataCineAnimationManager에 등록
+        // CRITICAL: registerViewport()를 먼저 호출해야 함!
+        // setIsStackLoaded(true)가 Cine useEffect를 트리거하여 registerSlot() 호출
+        // 이 시점에 viewport가 이미 등록되어 있어야 animation 루프에서 찾을 수 있음
         wadoRsBulkDataCineAnimationManager.registerViewport(slotId, viewportRef.current!, numberOfFrames)
+
+        setIsStackLoaded(true)
+        if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Stack loaded with ${imageIds.length} frames`)
       } catch (error) {
         if (DEBUG_SLOT) console.error(`[WadoRsBulkDataSlot ${slotId}] Stack load failed:`, error)
         setIsStackLoaded(false)
@@ -330,7 +350,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     return () => {
       wadoRsBulkDataCineAnimationManager.unregisterViewport(slotId)
     }
-  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, globalFormat])  // stackVersion: 캐시 클리어 시 Stack 재설정, globalFormat: 포맷 변경 시 재설정
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, globalFormat, globalResolution])  // stackVersion: 캐시 클리어 시 Stack 재설정, globalFormat/globalResolution: 포맷/해상도 변경 시 재설정
 
   // ==================== 자동 프리로드 ====================
 
@@ -368,7 +388,12 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   // ==================== Cine 재생 루프 (WadoRsBulkDataCineAnimationManager 연동) ====================
 
   useEffect(() => {
-    if (isPlaying && instance && instance.numberOfFrames > 1) {
+    // CRITICAL: currentFrame 의존성 제거!
+    // 재생 중에는 BaseCineAnimationManager가 viewport를 직접 조작함 (setImageIdIndex)
+    // currentFrame이 의존성에 있으면 매 프레임마다 cleanup(unregisterSlot) → effect(registerSlot) 반복
+    // → 9개 슬롯이 동시에 등록/해제 반복 → RAF 콜백과 경합 → race condition (일부 슬롯만 재생)
+    if (isPlaying && instance && instance.numberOfFrames > 1 && isStackLoaded) {
+      // 재생 시작 시 현재 프레임 위치 설정 (한 번만 실행됨)
       wadoRsBulkDataCineAnimationManager.setCurrentIndex(slotId, currentFrame)
       wadoRsBulkDataCineAnimationManager.registerSlot(slotId)
     } else {
@@ -378,7 +403,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     return () => {
       wadoRsBulkDataCineAnimationManager.unregisterSlot(slotId)
     }
-  }, [isPlaying, instance, slotId, currentFrame])
+  }, [isPlaying, instance, slotId, isStackLoaded])  // currentFrame 제거됨!
 
   // globalFps 변경 시 CineAnimationManager에 반영
   useEffect(() => {

@@ -64,7 +64,13 @@ export type {
   FileAssetSummary,
   TieringPolicies,
   CategoryStorageMetrics,
+  TenantStorageMetrics,
   StorageMetricsTrend,
   SeaweedFSCapacity,
   PageResponse,
+  TierTransitionHistory,
+  MonitoringTasksResponse,
+  UploadTask,
+  RenderingTask,
+  TaskSummary,
 } from './admin'

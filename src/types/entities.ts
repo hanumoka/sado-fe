@@ -76,6 +76,8 @@ export interface Instance {
   sopInstanceUid: string // DICOM SOP Instance UID
   sopClassUid?: string // DICOM SOP Class UID
   seriesId: string // Series ID
+  studyId?: string // Study ID (상위 계층)
+  patientId?: string // Patient ID (상위 계층)
   instanceNumber: number // Instance 번호
   rows?: number // 이미지 높이
   columns?: number // 이미지 너비

@@ -1,138 +1,86 @@
 /**
  * TierDistributionChart.tsx
  *
- * Storage Tier 분포 차트 컴포넌트
- *
- * 기능:
- * - Recharts 파이 차트로 Tier 분포 시각화
- * - HOT/WARM/COLD Tier별 색상 구분
- * - 바이트를 사람이 읽기 쉬운 형식으로 표시
+ * Storage Tier 분포를 파이 차트로 표시
  */
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
-import { formatBytes } from '@/lib/utils'
 import type { TierDistribution } from '@/types'
 
 interface TierDistributionChartProps {
-  distribution: TierDistribution
+  data: TierDistribution
+  isLoading?: boolean
 }
 
-// Recharts Pie Label Props 타입 정의 (PieLabelRenderProps와 호환)
-interface PieLabelProps {
-  cx?: number
-  cy?: number
-  midAngle?: number
-  innerRadius?: number
-  outerRadius?: number
-  percent?: number
-  index?: number
+const COLORS = {
+  hot: '#ef4444',   // red-500
+  warm: '#eab308',  // yellow-500
+  cold: '#3b82f6',  // blue-500
 }
 
-// Tier별 색상 정의
-const TIER_COLORS = {
-  HOT: '#ef4444', // red-500
-  WARM: '#f59e0b', // yellow-500
-  COLD: '#3b82f6', // blue-500
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-export default function TierDistributionChart({
-  distribution,
-}: TierDistributionChartProps) {
-  // Recharts 데이터 형식으로 변환
-  const data = [
-    { name: 'HOT', value: distribution.hot, color: TIER_COLORS.HOT },
-    { name: 'WARM', value: distribution.warm, color: TIER_COLORS.WARM },
-    { name: 'COLD', value: distribution.cold, color: TIER_COLORS.COLD },
-  ]
-
-  // 커스텀 라벨 렌더링
-  const renderCustomLabel = ({
-    cx,
-    cy,
-    midAngle,
-    innerRadius,
-    outerRadius,
-    percent,
-  }: PieLabelProps) => {
-    // 필수 값 체크
-    if (cx === undefined || cy === undefined || midAngle === undefined ||
-        innerRadius === undefined || outerRadius === undefined || percent === undefined) {
-      return null
-    }
-
-    const RADIAN = Math.PI / 180
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.5
-    const x = cx + radius * Math.cos(-midAngle * RADIAN)
-    const y = cy + radius * Math.sin(-midAngle * RADIAN)
-
-    // 10% 미만은 라벨 표시 안함
-    if (percent < 0.1) return null
-
+export default function TierDistributionChart({ data, isLoading }: TierDistributionChartProps) {
+  if (isLoading) {
     return (
-      <text
-        x={x}
-        y={y}
-        fill="white"
-        textAnchor={x > cx ? 'start' : 'end'}
-        dominantBaseline="central"
-        className="text-sm font-medium"
-      >
-        {`${(percent * 100).toFixed(0)}%`}
-      </text>
+      <div className="bg-white rounded-lg border border-gray-200 p-6 h-80 animate-pulse">
+        <div className="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
+        <div className="h-48 bg-gray-100 rounded"></div>
+      </div>
     )
   }
 
-  // Tooltip 커스텀 포맷터
-  const tooltipFormatter = (value: number | undefined) => {
-    if (value === undefined) return '0'
-    return formatBytes(value)
-  }
+  const chartData = [
+    { name: 'HOT', value: data.hot, color: COLORS.hot },
+    { name: 'WARM', value: data.warm, color: COLORS.warm },
+    { name: 'COLD', value: data.cold, color: COLORS.cold },
+  ].filter(item => item.value > 0)
+
+  const total = data.hot + data.warm + data.cold
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">
-        Storage Tier 분포
-      </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={renderCustomLabel}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-          >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip formatter={tooltipFormatter} />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">Tier 분포</h3>
 
-      {/* 상세 정보 */}
-      <div className="mt-4 grid grid-cols-3 gap-4 border-t pt-4">
-        {data.map((tier) => (
-          <div key={tier.name} className="text-center">
-            <div className="flex items-center justify-center mb-1">
-              <div
-                className="w-3 h-3 rounded-full mr-2"
-                style={{ backgroundColor: tier.color }}
-              />
-              <span className="text-sm font-medium text-gray-700">
-                {tier.name}
-              </span>
-            </div>
-            <p className="text-sm font-bold text-gray-900">
-              {formatBytes(tier.value)}
-            </p>
-          </div>
-        ))}
-      </div>
+      {total === 0 ? (
+        <div className="h-48 flex items-center justify-center text-gray-500">
+          데이터 없음
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={250}>
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={80}
+              paddingAngle={5}
+              dataKey="value"
+              label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(value) => formatBytes(value as number)}
+            />
+            <Legend
+              formatter={(value) => {
+                const item = chartData.find(d => d.name === value)
+                return `${value}: ${item ? formatBytes(item.value) : ''}`
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      )}
     </div>
   )
 }

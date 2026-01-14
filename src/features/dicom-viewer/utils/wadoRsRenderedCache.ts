@@ -44,9 +44,13 @@ let cacheMisses = 0
  * 포트 번호 차이로 인한 캐시 미스를 방지하기 위해
  * 호스트/포트를 제거하고 경로 + 쿼리만 사용
  *
+ * wadors: 스킴도 처리하여 Cornerstone imageId와 프리로드 URL 간의
+ * 캐시 키 불일치 문제를 해결
+ *
  * @example
  * - "http://localhost:10201/.../frames/1/rendered" → "/dicomweb/.../frames/1/rendered"
  * - "http://localhost:10201/.../frames/1/rendered?resolution=256" → "/dicomweb/.../frames/1/rendered?resolution=256"
+ * - "wadors:http://localhost:10201/.../frames/1/rendered" → "/dicomweb/.../frames/1/rendered"
  *
  * @param url 원본 URL
  * @returns 정규화된 경로 (쿼리 파라미터 포함)
@@ -60,12 +64,20 @@ function normalizeUrlToPath(url: string): string {
 
   let normalized: string
   try {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      const urlObj = new URL(url)
+    // wadors: 스킴 제거 (Cornerstone imageId 형식)
+    // 예: "wadors:/dicomweb/..." → "/dicomweb/..."
+    // 예: "wadors:http://localhost:10201/dicomweb/..." → "http://localhost:10201/dicomweb/..."
+    let urlToProcess = url
+    if (url.startsWith('wadors:')) {
+      urlToProcess = url.slice(7) // 'wadors:' (7글자) 제거
+    }
+
+    if (urlToProcess.startsWith('http://') || urlToProcess.startsWith('https://')) {
+      const urlObj = new URL(urlToProcess)
       // pathname + search (쿼리 파라미터 포함)로 resolution별 캐시 분리
       normalized = urlObj.pathname + urlObj.search
     } else {
-      normalized = url
+      normalized = urlToProcess
     }
   } catch {
     normalized = url

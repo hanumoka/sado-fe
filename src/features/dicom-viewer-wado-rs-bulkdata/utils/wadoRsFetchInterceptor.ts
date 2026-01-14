@@ -53,6 +53,9 @@ function isWadoRsFrameRequest(url: string): boolean {
 /**
  * Request/URL에서 URL 문자열 추출
  *
+ * RequestInfo = string | Request
+ * 따라서 input: RequestInfo | URL = string | Request | URL
+ *
  * @param input fetch의 첫 번째 인자
  * @returns URL 문자열
  */
@@ -63,10 +66,8 @@ function extractUrl(input: RequestInfo | URL): string {
   if (input instanceof URL) {
     return input.href
   }
-  if (input instanceof Request) {
-    return input.url
-  }
-  return ''
+  // TypeScript 타입 추론: 여기서 input은 Request 타입
+  return input.url
 }
 
 /**
@@ -99,7 +100,7 @@ function createCachedResponse(data: ArrayBuffer, _url: string): Response {
 export function enableWadoRsFetchInterceptor(): void {
   if (isInterceptorEnabled) {
     if (DEBUG_INTERCEPTOR) {
-      if (DEBUG_INTERCEPTOR) console.log('[WadoRsFetchInterceptor] Already enabled, skipping')
+      console.log('[WadoRsFetchInterceptor] Already enabled, skipping')
     }
     return
   }
@@ -123,7 +124,7 @@ export function enableWadoRsFetchInterceptor(): void {
           cacheHitRequests++
 
           if (DEBUG_INTERCEPTOR) {
-            if (DEBUG_INTERCEPTOR) console.log(`[WadoRsFetchInterceptor] [fetch] Cache HIT: ${url}`)
+            console.log(`[WadoRsFetchInterceptor] [fetch] Cache HIT: ${url}`)
           }
 
           // 캐시된 데이터로 Response 생성
@@ -138,7 +139,7 @@ export function enableWadoRsFetchInterceptor(): void {
       passedThroughRequests++
 
       if (DEBUG_INTERCEPTOR) {
-        if (DEBUG_INTERCEPTOR) console.log(`[WadoRsFetchInterceptor] [fetch] Cache MISS, fetching: ${url}`)
+        console.log(`[WadoRsFetchInterceptor] [fetch] Cache MISS, fetching: ${url}`)
       }
     }
 
@@ -165,7 +166,7 @@ export function enableWadoRsFetchInterceptor(): void {
     xhrUrlMap.set(this, urlString)
 
     if (DEBUG_INTERCEPTOR && isWadoRsFrameRequest(urlString)) {
-      if (DEBUG_INTERCEPTOR) console.log(`[WadoRsFetchInterceptor] [XHR] open: ${urlString}`)
+      console.log(`[WadoRsFetchInterceptor] [XHR] open: ${urlString}`)
     }
 
     // 원본 open 호출
@@ -186,7 +187,7 @@ export function enableWadoRsFetchInterceptor(): void {
           cacheHitRequests++
 
           if (DEBUG_INTERCEPTOR) {
-            if (DEBUG_INTERCEPTOR) console.log(`[WadoRsFetchInterceptor] [XHR] Cache HIT: ${url}`)
+            console.log(`[WadoRsFetchInterceptor] [XHR] Cache HIT: ${url}`)
           }
 
           // XHR 응답 시뮬레이션
@@ -217,7 +218,7 @@ export function enableWadoRsFetchInterceptor(): void {
       passedThroughRequests++
 
       if (DEBUG_INTERCEPTOR) {
-        if (DEBUG_INTERCEPTOR) console.log(`[WadoRsFetchInterceptor] [XHR] Cache MISS, fetching: ${url}`)
+        console.log(`[WadoRsFetchInterceptor] [XHR] Cache MISS, fetching: ${url}`)
       }
     }
 
@@ -228,7 +229,7 @@ export function enableWadoRsFetchInterceptor(): void {
   isInterceptorEnabled = true
 
   if (DEBUG_INTERCEPTOR) {
-    if (DEBUG_INTERCEPTOR) console.log('[WadoRsFetchInterceptor] Enabled (fetch + XHR)')
+    console.log('[WadoRsFetchInterceptor] Enabled (fetch + XHR)')
   }
 }
 
@@ -240,7 +241,7 @@ export function enableWadoRsFetchInterceptor(): void {
 export function disableWadoRsFetchInterceptor(): void {
   if (!isInterceptorEnabled) {
     if (DEBUG_INTERCEPTOR) {
-      if (DEBUG_INTERCEPTOR) console.log('[WadoRsFetchInterceptor] Not enabled or already disabled')
+      console.log('[WadoRsFetchInterceptor] Not enabled or already disabled')
     }
     return
   }
@@ -264,7 +265,7 @@ export function disableWadoRsFetchInterceptor(): void {
   isInterceptorEnabled = false
 
   if (DEBUG_INTERCEPTOR) {
-    if (DEBUG_INTERCEPTOR) console.log('[WadoRsFetchInterceptor] Disabled')
+    console.log('[WadoRsFetchInterceptor] Disabled')
   }
 }
 

@@ -16,8 +16,8 @@ import type {
   WadoRsBulkDataMultiViewerState,
   WadoRsBulkDataSlotPerformanceStats,
   WadoRsBulkDataPreloadPerformance,
+  BulkDataFormat,
 } from '../types/wadoRsBulkDataTypes'
-import type { BulkDataFormat } from '../utils/wadoRsBulkDataImageIdHelper'
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoRsBulkDataImageId } from '../utils/wadoRsBulkDataImageIdHelper'
@@ -25,6 +25,7 @@ import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
 import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
 import { clearPixelDataCache } from '../utils/wadoRsPixelDataCache'
+import { clearImageCache as clearRenderedCache } from '@/lib/cornerstone/wadoRsRenderedLoader'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_STORE = false
@@ -59,6 +60,9 @@ function createEmptySlotState(): WadoRsBulkDataSlotState {
     isPreloading: false,
     isPreloaded: false,
     preloadProgress: 0,
+    // Progressive Playback
+    loadedFrames: new Set<number>(),
+    isBuffering: false,
     loading: false,
     error: null,
     metadataError: null,
@@ -113,6 +117,7 @@ interface WadoRsBulkDataMultiViewerActions {
   setLayout: (layout: WadoRsBulkDataGridLayout) => void
   setGlobalFps: (fps: number) => void
   setGlobalFormat: (format: BulkDataFormat) => void
+  setGlobalResolution: (resolution: number) => void
 
   // 배치 테스트용
   setBatchSize: (size: number) => void
@@ -146,6 +151,9 @@ interface WadoRsBulkDataMultiViewerActions {
   startSlotPreload: (slotId: number) => void
   updateSlotPreloadProgress: (slotId: number, progress: number) => void
   finishSlotPreload: (slotId: number) => void
+
+  // Progressive Playback
+  markFrameLoaded: (slotId: number, frameIndex: number) => void
 
   // 성능 추적
   updateSlotPerformance: (slotId: number, fps: number, frameTime: number) => void
@@ -216,6 +224,64 @@ async function waitForPreloadComplete(
 }
 
 /**
+ * Progressive Playback: 초기 버퍼 대기 (폴링 방식)
+ *
+ * 모든 프레임이 로드될 때까지 기다리지 않고,
+ * 초기 버퍼(INITIAL_BUFFER_SIZE)가 채워지면 재생 시작
+ *
+ * 조건:
+ * 1. Frame 0이 로드됨 (첫 번째 프레임 필수)
+ * 2. loadedFrames.size >= requiredFrames
+ * 3. 또는 isPreloaded가 true (전체 로드 완료)
+ *
+ * 타임아웃 시: Frame 0만 로드되었으면 재생 시작
+ */
+async function waitForInitialBuffer(
+  slotId: number,
+  requiredFrames: number,
+  get: () => WadoRsBulkDataMultiViewerStore,
+  timeout = 10000
+): Promise<void> {
+  return new Promise((resolve) => {
+    const startTime = Date.now()
+
+    const check = () => {
+      const slot = get().slots[slotId]
+      if (!slot) {
+        resolve()
+        return
+      }
+
+      const hasFrame0 = slot.loadedFrames.has(0)
+      const loadedCount = slot.loadedFrames.size
+
+      // 조건 충족: Frame 0 + 충분한 프레임 또는 전체 로드 완료
+      if ((hasFrame0 && loadedCount >= requiredFrames) || slot.isPreloaded) {
+        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Initial buffer ready for slot ${slotId}: ${loadedCount} frames loaded`)
+        resolve()
+        return
+      }
+
+      // 타임아웃 체크
+      if (Date.now() - startTime > timeout) {
+        if (hasFrame0) {
+          if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Buffer timeout for slot ${slotId}, starting with ${loadedCount} frames`)
+          resolve()
+        } else {
+          // Frame 0도 없으면 계속 대기
+          setTimeout(check, 50)
+        }
+        return
+      }
+
+      setTimeout(check, 50)
+    }
+
+    check()
+  })
+}
+
+/**
  * 레이아웃에 따른 프리로드 배치 크기 결정
  */
 function getBatchSizeForLayout(layout: WadoRsBulkDataGridLayout): number {
@@ -236,28 +302,32 @@ function getBatchSizeForLayout(layout: WadoRsBulkDataGridLayout): number {
 /**
  * 레이아웃에 따른 동시 프리로드 슬롯 수 결정
  *
- * 캐시 크기 제한 (500MB)으로 인해 너무 많은 슬롯이 동시에 프리로드하면
- * LRU eviction으로 먼저 캐시된 슬롯의 데이터가 제거됨.
+ * Original/Raw 포맷의 캐시 경합 방지를 위해 동시 프리로드 수를 제한
+ * (Rendered 포맷은 배치 프리페치를 스킵하므로 영향 없음)
  *
- * 4x4 레이아웃에서 16개 슬롯이 동시에 프리로드하면:
- * - 각 슬롯 100프레임 × 2MB = 200MB
- * - 16슬롯 × 200MB = 3.2GB >> 500MB 캐시 제한
- * - 결과: 캐시 eviction → 캐시 미스 → 개별 HTTP 요청 발생
+ * 문제:
+ * - 2x2에서 4개 슬롯 × 4개 동시 배치 = 16개 동시 HTTP 요청
+ * - 500MB 캐시 제한 → LRU eviction → 캐시 미스 → 로드 지연
+ * - 일부 슬롯만 isStackLoaded=true → 일부만 재생됨
  *
- * 해결: 동시 프리로드 슬롯 수를 제한하여 캐시 경쟁 방지
+ * 해결: 동시 프리로드 슬롯 수를 레이아웃의 한 행/열 크기로 제한
  */
 function getConcurrentPreloadsForLayout(layout: WadoRsBulkDataGridLayout): number {
+  // 캐시 경합 완화를 위해 동시 프리로드 수를 2개로 제한
+  // 3x3 이상 레이아웃에서 캐시 eviction으로 인한 일부 슬롯 정지 문제 해결
   switch (layout) {
     case '1x1':
-      return 1 // 1개 슬롯만 있으므로 1
+      return 1
     case '2x2':
-      return 4 // 4개 슬롯 동시 가능 (캐시 여유)
+      return 2 // 2개씩 순차 프리로드 (캐시 경합 완화)
     case '3x3':
-      return 3 // 9개 슬롯이므로 3개씩 (3배치)
+      return 2 // 3 → 2로 감소 (캐시 경합 완화)
     case '4x4':
-      return 4 // 16개 슬롯이므로 4개씩 (4배치) - 캐시 경쟁 최소화
+      return 2 // 4 → 2로 감소 (캐시 경합 완화)
+    case '5x5':
+      return 2 // 5 → 2로 감소 (캐시 경합 완화)
     default:
-      return 4
+      return 2
   }
 }
 
@@ -269,7 +339,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   // 초기 상태
   layout: '1x1' as const,
   globalFps: 30,
-  globalFormat: 'original' as BulkDataFormat,  // BulkData 포맷 (original: 원본 인코딩, raw: 디코딩된 픽셀)
+  globalFormat: 'original' as BulkDataFormat,  // BulkData 포맷 (rendered: Pre-rendered, original: 원본 인코딩, raw: 디코딩된 픽셀)
+  globalResolution: 512,  // rendered 모드용 해상도 (512/256/128/64/32)
   slots: createInitialSlots(),
   availableInstances: [],
 
@@ -334,8 +405,12 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     // 1. 모든 재생 중지
     get().pauseAll()
 
-    // 2. 픽셀 데이터 캐시 클리어 (캐시 키에 format이 포함되어 있으므로 필요)
-    clearPixelDataCache()
+    // 2. 캐시 클리어 (포맷에 따라 다른 캐시)
+    if (format === 'rendered') {
+      clearRenderedCache()
+    } else {
+      clearPixelDataCache()
+    }
 
     // 3. 모든 슬롯 프리로드 상태 리셋 (format 변경은 전체 리셋 필요)
     // stackVersion 증가로 Stack 재설정 트리거
@@ -356,6 +431,40 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     }
 
     set({ globalFormat: format, slots: resetSlots })
+  },
+
+  setGlobalResolution: (resolution) => {
+    const currentResolution = get().globalResolution
+    if (currentResolution === resolution) return
+
+    // Resolution 변경 시: 재생 중지 + Rendered 캐시 클리어 + 슬롯 리셋
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Resolution changed: ${currentResolution} → ${resolution}, resetting...`)
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. Rendered 캐시 클리어 (resolution 변경은 rendered 모드에서만 의미 있음)
+    clearRenderedCache()
+
+    // 3. 모든 슬롯 프리로드 상태 리셋
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
+    }
+
+    set({ globalResolution: resolution, slots: resetSlots })
   },
 
   // ==================== 배치 테스트용 ====================
@@ -592,16 +701,47 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
+    // Progressive Playback: 초기 버퍼 크기 (15프레임 또는 전체의 15%)
+    const INITIAL_BUFFER_SIZE = Math.min(15, Math.ceil(slot.instance.numberOfFrames * 0.15))
+
+    // 1. 프리로드 시작 (백그라운드, await 없음)
     if (!slot.isPreloaded && !slot.isPreloading) {
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload before play for slot ${slotId}`)
-      await get().preloadSlotFrames(slotId)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload in background for slot ${slotId}`)
+      get().preloadSlotFrames(slotId).catch((error) => {
+        console.error(`[WadoRsBulkDataViewer] Preload failed for slot ${slotId}:`, error)
+      })
     }
 
-    if (get().slots[slotId]?.isPreloading) {
-      if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Waiting for preload to complete for slot ${slotId}`)
-      await waitForPreloadComplete(slotId, get)
+    // 2. 초기 버퍼만 대기 (기존: 100% 대기)
+    // isPreloaded=true면 이미 전체 로드 완료, 대기 불필요
+    if (slot.loadedFrames.size < INITIAL_BUFFER_SIZE && !slot.isPreloaded) {
+      // 버퍼링 상태 표시
+      set((state) => ({
+        slots: {
+          ...state.slots,
+          [slotId]: {
+            ...state.slots[slotId],
+            isBuffering: true,
+          },
+        },
+      }))
+
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Waiting for initial buffer (${INITIAL_BUFFER_SIZE} frames) for slot ${slotId}`)
+      await waitForInitialBuffer(slotId, INITIAL_BUFFER_SIZE, get)
+
+      // 버퍼링 완료
+      set((state) => ({
+        slots: {
+          ...state.slots,
+          [slotId]: {
+            ...state.slots[slotId],
+            isBuffering: false,
+          },
+        },
+      }))
     }
 
+    // 3. 즉시 재생 시작
     set((state) => ({
       slots: {
         ...state.slots,
@@ -861,6 +1001,13 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       get().startSlotPreload(slotId)
     }
 
+    // rendered 모드는 별도의 Rendered Loader가 처리하므로 배치 프리페치 불필요
+    const globalFormat = get().globalFormat
+    if (globalFormat === 'rendered') {
+      get().finishSlotPreload(slotId)
+      return
+    }
+
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
       const BATCH_SIZE = get().batchSize || getBatchSizeForLayout(get().layout)
@@ -878,9 +1025,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       // 메타데이터 가져오기 (압축 데이터 디코딩용)
       const pixelMetadata = getCachedMetadata(sopInstanceUid)
 
-      // globalFormat 읽기 (format 선택 기능 연결)
-      const globalFormat = get().globalFormat
-
+      // globalFormat은 이 시점에서 'jpeg-baseline' | 'original' | 'raw' (rendered 제외됨)
       await prefetchAllFrames(
         studyInstanceUid,
         seriesInstanceUid,
@@ -892,7 +1037,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
           const progress = Math.round((loaded / total) * 50)
           get().updateSlotPreloadProgress(slotId, progress)
         },
-        undefined, // onFrameLoaded
+        undefined, // onFrameLoaded 비활성화 - 1600+ set() 호출로 race condition 유발
         {
           preferCompressed: globalFormat === 'original',
           format: globalFormat,
@@ -906,9 +1051,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       // Fetch Interceptor가 캐시된 PixelData 반환 → HTTP 요청 없음
       if (DEBUG_STORE) if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 2: Loading images via Cornerstone (cache hit expected)`)
 
-      // globalFormat 다시 읽기 (Phase 2에서 imageId 생성용)
-      const globalFormatForImageId = get().globalFormat
-
+      // globalFormat 재사용 (이미 'rendered'가 제외됨: 'jpeg-baseline' | 'original' | 'raw')
       let loadedCount = 0
       for (let i = 0; i < numberOfFrames; i += BATCH_SIZE) {
         const batch = []
@@ -918,7 +1061,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
             seriesInstanceUid,
             sopInstanceUid,
             j, // 0-based frame number
-            globalFormatForImageId // format 파라미터 전달
+            globalFormat // format 파라미터 전달 (타입: 'jpeg-baseline' | 'original' | 'raw')
           )
 
           batch.push(
@@ -996,6 +1139,27 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
           isPreloading: false,
           isPreloaded: true,
           preloadProgress: 100,
+        },
+      },
+    }))
+  },
+
+  // ==================== Progressive Playback ====================
+
+  markFrameLoaded: (slotId, frameIndex) => {
+    const slot = get().slots[slotId]
+    if (!slot || slot.loadedFrames.has(frameIndex)) return
+
+    // Set을 immutable하게 업데이트
+    const newLoadedFrames = new Set(slot.loadedFrames)
+    newLoadedFrames.add(frameIndex)
+
+    set((state) => ({
+      slots: {
+        ...state.slots,
+        [slotId]: {
+          ...state.slots[slotId],
+          loadedFrames: newLoadedFrames,
         },
       },
     }))
@@ -1192,11 +1356,25 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     }),
     {
       name: 'wado-rs-bulkdata-viewer-settings',
+      version: 1, // 버전 추가: 'jpeg' → 'jpeg-baseline' 마이그레이션
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         layout: state.layout,
         globalFps: state.globalFps,
+        globalFormat: state.globalFormat,
+        globalResolution: state.globalResolution,
       }),
+      migrate: (persistedState, version) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const state = persistedState as any
+        if (version === 0) {
+          // v0 → v1: 'jpeg' → 'jpeg-baseline' 마이그레이션
+          if (state.globalFormat === 'jpeg') {
+            state.globalFormat = 'jpeg-baseline'
+          }
+        }
+        return state
+      },
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState as Partial<WadoRsBulkDataMultiViewerState>),

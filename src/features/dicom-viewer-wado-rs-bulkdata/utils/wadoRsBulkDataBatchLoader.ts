@@ -242,7 +242,7 @@ function createImageFromPixelData(
   }
 
   if (DEBUG_BATCH_LOADER) {
-    if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log('[WadoRsBulkDataBatchLoader] IImage created:', {
+    console.log('[WadoRsBulkDataBatchLoader] IImage created:', {
       imageId,
       rows,
       columns,
@@ -313,7 +313,7 @@ function createCanvasFromPixelData(
   ctx.putImageData(imageData, 0, 0)
 
   if (DEBUG_BATCH_LOADER) {
-    if (DEBUG_BATCH_LOADER) if (DEBUG_BATCH_LOADER) console.log('[WadoRsBulkDataBatchLoader] Canvas created:', columns, 'x', rows)
+    console.log('[WadoRsBulkDataBatchLoader] Canvas created:', columns, 'x', rows)
   }
 
   return canvas

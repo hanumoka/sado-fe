@@ -13,23 +13,8 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, User, Calendar, Building2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { Patient, Gender } from '../types/patient'
-
-// Gender 표시 라벨
-const GENDER_LABELS: Record<Gender, string> = {
-  M: '남성',
-  F: '여성',
-  O: '기타',
-  U: '알 수 없음',
-}
-
-// Gender 색상 스타일
-const GENDER_COLORS: Record<Gender, string> = {
-  M: 'bg-blue-100 text-blue-800',
-  F: 'bg-pink-100 text-pink-800',
-  O: 'bg-purple-100 text-purple-800',
-  U: 'bg-gray-100 text-gray-800',
-}
+import type { Patient } from '../types/patient'
+import { GENDER_LABELS, GENDER_COLORS } from '../constants/gender'
 
 interface PatientDetailModalProps {
   patient: Patient

@@ -18,6 +18,7 @@ import {
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useCornerstoneMultiViewerStore } from '../stores'
 import { createWadoRsRenderedImageIds } from '@/lib/cornerstone/wadoRsRenderedLoader'
+import { createWadoRsBulkDataImageIds, type BulkDataFormat } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsBulkDataImageIdHelper'
 import { cineAnimationManager } from '../utils/cineAnimationManager'
 import { useShallow } from 'zustand/react/shallow'
 import { CornerstoneSlotOverlay } from './CornerstoneSlotOverlay'
@@ -92,6 +93,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
   // 전역 상태 및 액션 (slot은 위에서 이미 선언됨)
   const globalFps = useCornerstoneMultiViewerStore((state) => state.globalFps)
   const globalResolution = useCornerstoneMultiViewerStore((state) => state.globalResolution)
+  const dataSourceType = useCornerstoneMultiViewerStore((state) => state.dataSourceType)
   const allThumbnailsLoaded = useCornerstoneMultiViewerStore((state) => state.allThumbnailsLoaded)
   const assignInstanceToSlot = useCornerstoneMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useCornerstoneMultiViewerStore((state) => state.preloadSlotFrames)
@@ -226,14 +228,40 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
         })
       }
 
-      // WADO-RS Rendered imageIds 생성 (resolution 포함)
-      const imageIds = createWadoRsRenderedImageIds(
-        studyInstanceUid,
-        seriesInstanceUid,
-        sopInstanceUid,
-        numberOfFrames,
-        globalResolution
-      )
+      // Data Source에 따른 imageIds 생성
+      let imageIds: string[]
+      switch (dataSourceType) {
+        case 'rendered':
+          // Pre-rendered JPEG/PNG (resolution 지원)
+          imageIds = createWadoRsRenderedImageIds(
+            studyInstanceUid,
+            seriesInstanceUid,
+            sopInstanceUid,
+            numberOfFrames,
+            globalResolution
+          )
+          break
+        case 'original':
+          // 원본 Transfer Syntax (WADO-RS BulkData)
+          imageIds = createWadoRsBulkDataImageIds(
+            studyInstanceUid,
+            seriesInstanceUid,
+            sopInstanceUid,
+            numberOfFrames,
+            'original' as BulkDataFormat
+          )
+          break
+        case 'raw':
+          // 디코딩된 픽셀 데이터 (WADO-RS BulkData)
+          imageIds = createWadoRsBulkDataImageIds(
+            studyInstanceUid,
+            seriesInstanceUid,
+            sopInstanceUid,
+            numberOfFrames,
+            'raw' as BulkDataFormat
+          )
+          break
+      }
 
       try {
         if (DEBUG_SLOT) console.log(`[CornerstoneSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
@@ -290,7 +318,7 @@ export function CornerstoneSlot({ slotId, renderingEngineId }: CornerstoneSlotPr
     return () => {
       cineAnimationManager.unregisterViewport(slotId)
     }
-  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, globalResolution, stackVersion])  // stackVersion 추가: 캐시 클리어 시 Stack 재설정
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, globalResolution, dataSourceType, stackVersion])  // dataSourceType, stackVersion: 소스/캐시 변경 시 Stack 재설정
 
   // ==================== 자동 프리로드 ====================
   // Phase 2: 썸네일 로딩 완료 후 프리로드 시작 (썸네일 우선 전략)

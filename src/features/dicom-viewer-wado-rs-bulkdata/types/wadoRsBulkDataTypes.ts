@@ -56,6 +56,12 @@ export interface WadoRsBulkDataSlotState {
   isPreloaded: boolean
   /** 프리로드 진행률 (0-100) */
   preloadProgress: number
+
+  // Progressive Playback 필드
+  /** 로드된 프레임 인덱스 Set (개별 프레임 추적) */
+  loadedFrames: Set<number>
+  /** 초기 버퍼 대기 중 여부 */
+  isBuffering: boolean
   /** 로딩 중 여부 */
   loading: boolean
   /** 에러 메시지 */
@@ -87,7 +93,38 @@ export interface WadoRsBulkDataPreloadPerformance {
 // ==================== Store 상태 ====================
 
 /** BulkData 포맷 타입 */
-export type BulkDataFormat = 'raw' | 'original'
+export type BulkDataFormat = 'rendered' | 'jpeg-baseline' | 'original' | 'raw'
+
+/** BulkData 포맷 설정 */
+export interface BulkDataFormatConfig {
+  label: string
+  description: string
+  supportsWindowLevel: boolean
+}
+
+/** 포맷별 설정 */
+export const BULK_DATA_FORMAT_CONFIG: Record<BulkDataFormat, BulkDataFormatConfig> = {
+  rendered: {
+    label: 'Pre-rendered',
+    description: 'PNG/JPEG, Resolution 선택',
+    supportsWindowLevel: false,
+  },
+  'jpeg-baseline': {
+    label: 'JPEG Baseline',
+    description: '원본 해상도 JPEG Baseline (90%, W/L 조절 가능)',
+    supportsWindowLevel: true,
+  },
+  original: {
+    label: 'Original',
+    description: '원본 인코딩',
+    supportsWindowLevel: true,
+  },
+  raw: {
+    label: 'Raw',
+    description: '디코딩된 픽셀',
+    supportsWindowLevel: true,
+  },
+}
 
 /** WADO-RS BulkData Multi Viewer 전체 상태 */
 export interface WadoRsBulkDataMultiViewerState {
@@ -95,8 +132,10 @@ export interface WadoRsBulkDataMultiViewerState {
   layout: WadoRsBulkDataGridLayout
   /** 전역 FPS 설정 */
   globalFps: number
-  /** 전역 포맷 설정 (raw: 디코딩된 픽셀, original: 원본 인코딩) */
+  /** 전역 포맷 설정 (rendered: Pre-rendered, raw: 디코딩된 픽셀, original: 원본 인코딩) */
   globalFormat: BulkDataFormat
+  /** 전역 해상도 설정 (rendered 모드용, 512/256/128/64/32) */
+  globalResolution: number
   /** 슬롯 상태 (최대 16개) */
   slots: Record<number, WadoRsBulkDataSlotState>
   /** 사용 가능한 인스턴스 목록 */

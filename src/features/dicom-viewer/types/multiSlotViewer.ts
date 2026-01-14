@@ -10,8 +10,41 @@
 /** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4, 5x5) */
 export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
 
-/** API 타입 (DICOM 이미지 로딩 방식) */
+/** API 타입 (DICOM 이미지 로딩 방식) - deprecated, use DataSourceType */
 export type ApiType = 'wado-rs' | 'wado-uri'
+
+/** 데이터 소스 타입 (이미지 로딩 소스 선택) */
+export type DataSourceType = 'rendered' | 'original' | 'raw'
+
+/** 데이터 소스 설정 */
+export interface DataSourceConfig {
+  label: string
+  description: string
+  loaderScheme: string
+  supportsWindowLevel: boolean
+}
+
+/** 데이터 소스별 설정 */
+export const DATA_SOURCE_CONFIG: Record<DataSourceType, DataSourceConfig> = {
+  rendered: {
+    label: 'Pre-rendered (Fast)',
+    description: 'JPEG/PNG, 빠른 로딩',
+    loaderScheme: 'wadors-rendered',
+    supportsWindowLevel: false,
+  },
+  original: {
+    label: 'Original (Quality)',
+    description: '원본 Transfer Syntax 유지',
+    loaderScheme: 'wadors',
+    supportsWindowLevel: true,
+  },
+  raw: {
+    label: 'Raw (Accurate)',
+    description: '디코딩된 픽셀, W/L 조절 가능',
+    loaderScheme: 'wadors',
+    supportsWindowLevel: true,
+  },
+}
 
 // ==================== Instance 정보 ====================
 
@@ -86,8 +119,10 @@ export type ResolutionMode = 'auto' | 'manual'
 export interface CornerstoneMultiViewerState {
   /** 레이아웃 (1x1, 2x2, 3x3) */
   layout: GridLayout
-  /** API 타입 */
+  /** API 타입 - deprecated, use dataSourceType */
   apiType: ApiType
+  /** 데이터 소스 타입 (rendered/original/raw) */
+  dataSourceType: DataSourceType
   /** 전역 FPS 설정 */
   globalFps: number
   /** 전역 해상도 설정 (512=PNG, 256=JPEG, 128=JPEG) */

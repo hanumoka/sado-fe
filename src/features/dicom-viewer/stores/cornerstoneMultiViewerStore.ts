@@ -13,6 +13,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   GridLayout,
   ApiType,
+  DataSourceType,
   ResolutionMode,
   InstanceSummary,
   CornerstoneSlotState,
@@ -134,6 +135,7 @@ interface CornerstoneMultiViewerActions {
   // 레이아웃 관리
   setLayout: (layout: GridLayout) => void
   setApiType: (apiType: ApiType) => void
+  setDataSourceType: (dataSourceType: DataSourceType) => void
   setGlobalFps: (fps: number) => void
   setGlobalResolution: (resolution: number) => void
   setResolutionMode: (mode: ResolutionMode) => void
@@ -299,6 +301,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   // 초기 상태
   layout: '1x1' as const,
   apiType: 'wado-rs' as const,
+  dataSourceType: 'rendered' as DataSourceType,
   globalFps: 30,
   globalResolution: 512, // 512=PNG, 256=JPEG, 128=JPEG (auto 모드에서는 레이아웃별 자동 설정)
   resolutionMode: 'auto' as const, // 기본값: 레이아웃별 자동 해상도
@@ -363,6 +366,49 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
   setApiType: (apiType) => {
     set({ apiType })
+  },
+
+  /**
+   * 데이터 소스 타입 변경
+   * rendered: Pre-rendered JPEG/PNG (빠른 로딩)
+   * original: 원본 Transfer Syntax 유지 (진단용)
+   * raw: 디코딩된 픽셀 데이터 (W/L 조절 가능)
+   */
+  setDataSourceType: (dataSourceType) => {
+    const currentDataSourceType = get().dataSourceType
+    if (currentDataSourceType === dataSourceType) return
+
+    // 1. 모든 재생 중지
+    get().pauseAll()
+
+    // 2. Rendered 캐시 클리어 (로더 변경)
+    clearRenderedCache()
+
+    // 3. 모든 슬롯 리셋 (캐시와 상태 동기화)
+    // stackVersion 증가로 Stack 재설정 트리거
+    const slots = get().slots
+    const resetSlots: Record<number, CornerstoneSlotState> = {}
+    for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+      if (slots[i]) {
+        resetSlots[i] = {
+          ...slots[i],
+          isPreloading: false,
+          isPreloaded: false,
+          preloadProgress: 0,
+          currentFrame: 0,
+          loadedFrames: new Set<number>(),
+          isBuffering: false,
+          isPlaying: false,
+          stackVersion: (slots[i].stackVersion ?? 0) + 1,
+        }
+      }
+    }
+
+    set({ dataSourceType, slots: resetSlots })
+
+    if (DEBUG_STORE) {
+      console.log(`[MultiViewer] Data source changed: ${currentDataSourceType} → ${dataSourceType}`)
+    }
   },
 
   setGlobalFps: (fps) => {
@@ -1365,6 +1411,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       partialize: (state) => ({
         layout: state.layout,
         apiType: state.apiType,
+        dataSourceType: state.dataSourceType,
         globalFps: state.globalFps,
         globalResolution: state.globalResolution,
         resolutionMode: state.resolutionMode,
@@ -1380,6 +1427,7 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
           console.log('[MultiViewer] Restored from session storage:', {
             layout: state.layout,
             apiType: state.apiType,
+            dataSourceType: state.dataSourceType,
             globalFps: state.globalFps,
             globalResolution: state.globalResolution,
             resolutionMode: state.resolutionMode,

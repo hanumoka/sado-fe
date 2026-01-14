@@ -10,7 +10,8 @@ import { useCornerstoneMultiViewerStore } from '../stores'
 import { getRenderedPrefetcherStats, type ResolutionStatsInfo } from '../utils/wadoRsRenderedPrefetcher'
 import { getRenderedCacheStats } from '../utils/wadoRsRenderedCache'
 import { formatBytes } from '@/lib/utils'
-import type { GridLayout, ApiType } from '../types/multiSlotViewer'
+import type { GridLayout, DataSourceType } from '../types/multiSlotViewer'
+import { DATA_SOURCE_CONFIG } from '../types/multiSlotViewer'
 
 const LAYOUT_OPTIONS: { value: GridLayout; label: string }[] = [
   { value: '1x1', label: '1×1' },
@@ -18,16 +19,21 @@ const LAYOUT_OPTIONS: { value: GridLayout; label: string }[] = [
   { value: '3x3', label: '3×3' },
 ]
 
-const API_OPTIONS: { value: ApiType; label: string; description: string }[] = [
+const DATA_SOURCE_OPTIONS: { value: DataSourceType; label: string; description: string }[] = [
   {
-    value: 'wado-rs',
-    label: 'WADO-RS',
-    description: '/dicomweb/studies/.../instances/.../frames/{n}/rendered',
+    value: 'rendered',
+    label: 'Pre-rendered',
+    description: DATA_SOURCE_CONFIG.rendered.description,
   },
   {
-    value: 'wado-uri',
-    label: 'WADO-URI',
-    description: '/dicomweb/wado?objectUID=...&frameNumber={n}',
+    value: 'original',
+    label: 'Original',
+    description: DATA_SOURCE_CONFIG.original.description,
+  },
+  {
+    value: 'raw',
+    label: 'Raw',
+    description: DATA_SOURCE_CONFIG.raw.description,
   },
 ]
 
@@ -44,12 +50,12 @@ const RESOLUTION_OPTIONS = [
 export function CornerstoneGlobalControls() {
   const {
     layout,
-    apiType,
+    dataSourceType,
     globalFps,
     globalResolution,
     slots,
     setLayout,
-    setApiType,
+    setDataSourceType,
     setGlobalFps,
     setGlobalResolution,
     playAll,
@@ -107,15 +113,15 @@ export function CornerstoneGlobalControls() {
           </div>
         </div>
 
-        {/* API 타입 선택 */}
+        {/* Data Source 선택 */}
         <div className="flex items-center gap-2">
-          <span className="text-gray-400 text-sm">API:</span>
+          <span className="text-gray-400 text-sm">Source:</span>
           <select
-            value={apiType}
-            onChange={(e) => setApiType(e.target.value as ApiType)}
+            value={dataSourceType}
+            onChange={(e) => setDataSourceType(e.target.value as DataSourceType)}
             className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {API_OPTIONS.map((opt) => (
+            {DATA_SOURCE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -139,21 +145,23 @@ export function CornerstoneGlobalControls() {
           </select>
         </div>
 
-        {/* Resolution 선택 */}
-        <div className="flex items-center gap-2">
-          <span className="text-gray-400 text-sm">Resolution:</span>
-          <select
-            value={globalResolution}
-            onChange={(e) => setGlobalResolution(parseInt(e.target.value, 10))}
-            className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {RESOLUTION_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Resolution 선택 (Pre-rendered일 때만 표시) */}
+        {dataSourceType === 'rendered' && (
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400 text-sm">Resolution:</span>
+            <select
+              value={globalResolution}
+              onChange={(e) => setGlobalResolution(parseInt(e.target.value, 10))}
+              className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {RESOLUTION_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* 구분선 */}
         <div className="h-8 w-px bg-gray-600" />
@@ -206,10 +214,13 @@ export function CornerstoneGlobalControls() {
         </div>
       </div>
 
-      {/* API 설명 및 통계 토글 */}
+      {/* Data Source 설명 및 통계 토글 */}
       <div className="mt-2 flex items-center gap-4">
         <div className="text-xs text-gray-500">
-          {API_OPTIONS.find((opt) => opt.value === apiType)?.description}
+          {DATA_SOURCE_OPTIONS.find((opt) => opt.value === dataSourceType)?.description}
+          {!DATA_SOURCE_CONFIG[dataSourceType].supportsWindowLevel && (
+            <span className="ml-2 text-yellow-500">(W/L 조절 불가)</span>
+          )}
         </div>
         <button
           onClick={toggleStats}

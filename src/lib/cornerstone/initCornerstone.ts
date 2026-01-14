@@ -14,6 +14,12 @@
  * - wadors-rendered: WADO-RS Rendered API (멀티 슬롯 뷰어용 커스텀 로더)
  */
 import * as cornerstone from '@cornerstonejs/core'
+import {
+  cache,
+  imageLoadPoolManager,
+  imageRetrievalPoolManager,
+  Enums,
+} from '@cornerstonejs/core'
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
@@ -54,6 +60,24 @@ export async function initCornerstone(): Promise<void> {
       cornerstone.setUseCPURendering(true)
       await cornerstone.init()
       if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Core initialized (CPU rendering)')
+
+      // 1-0. Cornerstone 성능 최적화 설정
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-0: Configuring performance settings...')
+      const { RequestType } = Enums
+      const cpuCores = navigator.hardwareConcurrency || 4
+
+      // Pool Manager 최적화: 프리페치 동시 요청 수 증가
+      // - imageRetrievalPoolManager: 네트워크 요청 관리 (프리페치 20개)
+      // - imageLoadPoolManager: 디코딩 작업 관리 (최소 20개, 또는 CPU 코어 × 2)
+      //   4x4 레이아웃(16슬롯)에서 동시 재생을 위해 최소 20개 보장 필요
+      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, 20)
+      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, Math.max(20, cpuCores * 2))
+
+      // Cornerstone 내부 캐시 크기 설정 (1GB)
+      // wadoRsPixelDataCache (2GB) + Cornerstone cache (1GB) = 총 3GB
+      cache.setMaxCacheSize(1 * 1024 * 1024 * 1024)
+
+      if (DEBUG_INIT) console.log(`[Cornerstone] Step 1-0: Performance configured (prefetch: 20, decode: ${cpuCores * 2}, cache: 1GB)`)
 
       // 1-1. WADO-RS Fetch Interceptors 활성화 (배치 API 최적화)
       // DICOM Image Loader 초기화 전에 활성화해야 함

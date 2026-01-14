@@ -1,0 +1,45 @@
+# =============================================================================
+# SADO Frontend - Docker Ignore
+# =============================================================================
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+coverage/
+*.test.*
+*.spec.*
+__tests__/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+.eslintcache
+.prettierignore

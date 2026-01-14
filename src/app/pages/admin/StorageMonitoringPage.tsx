@@ -2,174 +2,91 @@
  * StorageMonitoringPage.tsx
  *
  * 스토리지 모니터링 페이지
- *
- * 기능:
- * - 전체 스토리지 사용량 표시 (Hot/Warm/Cold)
- * - Tier 분포 파이 차트
- * - 카테고리별 스토리지 통계 (Bar Chart + Table)
- * - 30초 자동 갱신
+ * - SeaweedFS 용량 현황
+ * - 스토리지 트렌드
+ * - 카테고리별 사용량
  */
 
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  fetchStorageMetrics,
-  fetchTierDistribution,
-  fetchStorageByCategory,
   fetchSeaweedFSCapacity,
+  fetchStorageMetricsTrends,
+  fetchStorageByTenant,
 } from '@/lib/services/adminService'
-import StorageUsageCard from '@/components/admin/StorageUsageCard'
-import TierDistributionChart from '@/components/charts/TierDistributionChart'
-import { StorageTrendsChart } from '@/components/charts/StorageTrendsChart'
-import StorageByCategoryCard from '@/components/admin/StorageByCategoryCard'
 import SeaweedFSCapacityCard from '@/components/admin/SeaweedFSCapacityCard'
-import { ErrorMessage, LoadingSpinner } from '@/components/common'
+import StorageByCategoryCard from '@/components/admin/StorageByCategoryCard'
+import StorageTrendsChart from '@/components/charts/StorageTrendsChart'
 
-/**
- * 스토리지 모니터링 메인 페이지
- */
+type TrendRange = '7d' | '30d' | '90d'
+
 export default function StorageMonitoringPage() {
-  // 전체 스토리지 사용량 조회 (30초 자동 갱신)
-  const {
-    data: storageMetrics,
-    isLoading: isLoadingStorage,
-    error: storageError,
-    refetch: refetchStorage,
-  } = useQuery({
-    queryKey: ['admin', 'metrics', 'storage'],
-    queryFn: fetchStorageMetrics,
-    refetchInterval: 30000,
-    staleTime: 30000, // refetchInterval과 일치
-    retry: false,
-  })
+  const [trendRange, setTrendRange] = useState<TrendRange>('7d')
 
-  // Tier 분포 조회 (30초 자동 갱신)
-  const {
-    data: tierDistribution,
-    isLoading: isLoadingTier,
-    error: tierError,
-    refetch: refetchTier,
-  } = useQuery({
-    queryKey: ['admin', 'metrics', 'tier-distribution'],
-    queryFn: fetchTierDistribution,
-    refetchInterval: 30000,
-    staleTime: 30000, // refetchInterval과 일치
-    retry: false,
-  })
-
-  // 카테고리별 스토리지 조회 (30초 자동 갱신)
-  const {
-    data: categoryMetrics,
-    isLoading: isLoadingCategory,
-    error: categoryError,
-    refetch: refetchCategory,
-  } = useQuery({
-    queryKey: ['admin', 'metrics', 'storage-by-category'],
-    queryFn: fetchStorageByCategory,
-    refetchInterval: 30000,
-    staleTime: 30000, // refetchInterval과 일치
-    retry: false,
-  })
-
-  // SeaweedFS 물리적 용량 조회 (30초 자동 갱신)
-  const {
-    data: seaweedfsCapacity,
-    isLoading: isLoadingSeaweedFS,
-    error: seaweedfsError,
-    refetch: refetchSeaweedFS,
-  } = useQuery({
-    queryKey: ['admin', 'seaweedfs', 'capacity'],
+  // SeaweedFS 용량 조회
+  const { data: capacity, isLoading: capacityLoading } = useQuery({
+    queryKey: ['seaweedfsCapacity'],
     queryFn: fetchSeaweedFSCapacity,
-    refetchInterval: 30000,
-    staleTime: 30000,
-    retry: false,
+    refetchInterval: 60000,
   })
 
-  // 전체 로딩 상태
-  const isLoading = isLoadingStorage || isLoadingTier || isLoadingCategory || isLoadingSeaweedFS
+  // 스토리지 트렌드 조회
+  const { data: trends, isLoading: trendsLoading } = useQuery({
+    queryKey: ['storageTrends', trendRange],
+    queryFn: () => fetchStorageMetricsTrends(trendRange),
+    refetchInterval: 60000,
+  })
 
-  // 에러 처리
-  const error = storageError || tierError || categoryError || seaweedfsError
-  const refetch = () => {
-    refetchStorage()
-    refetchTier()
-    refetchCategory()
-    refetchSeaweedFS()
-  }
-
-  // 로딩 상태
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner />
-      </div>
-    )
-  }
-
-  // 에러 상태
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <ErrorMessage error={error} onRetry={refetch} />
-      </div>
-    )
-  }
+  // 테넌트별 사용량 조회
+  const { data: tenantMetrics, isLoading: tenantLoading } = useQuery({
+    queryKey: ['storageByTenant'],
+    queryFn: fetchStorageByTenant,
+    refetchInterval: 60000,
+  })
 
   return (
     <div className="space-y-6">
-      {/* 페이지 헤더 */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          스토리지 모니터링
-        </h1>
-        <p className="text-sm text-gray-600 mt-1">
-          스토리지 사용량 및 Tier 분포 실시간 모니터링 (30초 자동 갱신)
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900">스토리지 모니터링</h1>
+        <p className="text-gray-600 mt-1">스토리지 사용량 및 트렌드를 모니터링합니다.</p>
       </div>
 
-      {/* SeaweedFS 물리적 용량 카드 (최상단) */}
-      {seaweedfsCapacity && (
-        <SeaweedFSCapacityCard capacity={seaweedfsCapacity} />
-      )}
+      {/* 상단: SeaweedFS 용량 + 카테고리별 사용량 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SeaweedFSCapacityCard
+          data={capacity || { totalCapacity: 0, usedSpace: 0, freeSpace: 0, percentUsed: 0 }}
+          isLoading={capacityLoading}
+        />
+        <StorageByCategoryCard
+          data={tenantMetrics || []}
+          isLoading={tenantLoading}
+        />
+      </div>
 
-      {/* 스토리지 사용량 카드 (FileAsset 기반) */}
-      {storageMetrics && (
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">
-            저장된 파일 메타데이터 (Tier별)
-          </h2>
-          <StorageUsageCard
-            summary={{
-              totalSize: storageMetrics.totalSize,
-              hotSize: storageMetrics.hotSize,
-              warmSize: storageMetrics.warmSize,
-              coldSize: storageMetrics.coldSize,
-            }}
-          />
+      {/* 트렌드 차트 */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">스토리지 트렌드</h2>
+          <div className="flex gap-2">
+            {(['7d', '30d', '90d'] as TrendRange[]).map(range => (
+              <button
+                key={range}
+                onClick={() => setTrendRange(range)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  trendRange === range
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {range === '7d' ? '7일' : range === '30d' ? '30일' : '90일'}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
-
-      {/* Tier 분포 차트 (재사용) */}
-      {tierDistribution && (
-        <TierDistributionChart distribution={tierDistribution} />
-      )}
-
-      {/* 스토리지 사용량 추세 차트 (시계열 데이터) */}
-      <StorageTrendsChart />
-
-      {/* 카테고리별 스토리지 통계 (신규) */}
-      {categoryMetrics && categoryMetrics.length > 0 && (
-        <StorageByCategoryCard categories={categoryMetrics} />
-      )}
-
-      {/* 미구현 기능 안내 */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-yellow-800 mb-2">
-          추가 기능 개발 예정
-        </h3>
-        <ul className="text-sm text-yellow-700 space-y-1">
-          <li>• Tier 전환 히스토리 (Backend API 개발 필요)</li>
-          <li>• 스토리지 증가 예측 (Backend API 개발 필요)</li>
-        </ul>
+        <StorageTrendsChart
+          data={trends || []}
+          isLoading={trendsLoading}
+        />
       </div>
     </div>
   )

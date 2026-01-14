@@ -11,8 +11,11 @@ import { ErrorFallback } from '@/components/error'
 function App() {
   const handleError = (error: Error, info: React.ErrorInfo) => {
     // 에러 로깅 (나중에 Sentry 등 연동 가능)
-    console.error('App Error:', error)
-    console.error('Component Stack:', info.componentStack)
+    // 개발 환경에서만 콘솔 출력
+    if (import.meta.env.DEV) {
+      console.error('App Error:', error)
+      console.error('Component Stack:', info.componentStack)
+    }
   }
 
   const handleReset = () => {

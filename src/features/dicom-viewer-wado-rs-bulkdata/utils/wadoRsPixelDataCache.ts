@@ -22,9 +22,11 @@ import { LRUHeapCache } from '@/lib/utils/minHeap'
 // 디버그 로그 플래그
 const DEBUG_CACHE = false
 
-// 최대 캐시 크기 (4GB)
-// 4x4 레이아웃 (16슬롯 × 100프레임 × 2MB = 3.2GB)을 충분히 수용
-const MAX_CACHE_SIZE = 4 * 1024 * 1024 * 1024
+// 최대 캐시 크기 (2GB)
+// 2x2 레이아웃 (4슬롯 × 100프레임 × 2MB = 800MB) 충분히 수용
+// 4x4 레이아웃은 LRU eviction으로 자동 관리
+// 메모리 최적화: 기존 4GB → 2GB (Orthanc OHIF 수준)
+const MAX_CACHE_SIZE = 2 * 1024 * 1024 * 1024
 
 // LRU 캐시 (MinHeap 기반 - O(log N) eviction)
 const pixelDataCache = new LRUHeapCache<string, ArrayBuffer>({

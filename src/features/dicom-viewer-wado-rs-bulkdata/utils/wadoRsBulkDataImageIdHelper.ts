@@ -29,7 +29,7 @@ const API_BASE = ''
 const THUMBNAIL_BASE = ''
 
 /** BulkData 포맷 타입 */
-export type BulkDataFormat = 'raw' | 'original'
+export type BulkDataFormat = 'raw' | 'original' | 'jpeg-baseline'
 
 /**
  * WADO-RS BulkData imageId 생성
@@ -38,7 +38,7 @@ export type BulkDataFormat = 'raw' | 'original'
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (0-based, 멀티프레임용)
- * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩)
+ * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩, jpeg-baseline: JPEG Baseline)
  * @returns wadors:URL 형식의 imageId
  *
  * @example
@@ -82,7 +82,7 @@ export function createWadoRsBulkDataImageId(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param numberOfFrames 총 프레임 수
- * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩)
+ * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩, jpeg-baseline: JPEG Baseline)
  * @returns imageId 배열
  */
 export function createWadoRsBulkDataImageIds(

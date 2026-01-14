@@ -47,6 +47,8 @@ interface InstanceResponse {
   id: number
   uuid: string | null
   seriesId: number
+  studyId: number | null
+  patientId: number | null
   sopInstanceUid: string
   sopClassUid: string | null
   rows: number | null
@@ -75,6 +77,8 @@ function adaptInstanceResponse(response: InstanceResponse): Instance {
     id: String(response.id),
     uuid: response.uuid ?? undefined,
     seriesId: String(response.seriesId),
+    studyId: response.studyId ? String(response.studyId) : undefined,
+    patientId: response.patientId ? String(response.patientId) : undefined,
     sopInstanceUid: response.sopInstanceUid,
     sopClassUid: response.sopClassUid ?? undefined,
     instanceNumber: response.instanceNumber ?? 0,

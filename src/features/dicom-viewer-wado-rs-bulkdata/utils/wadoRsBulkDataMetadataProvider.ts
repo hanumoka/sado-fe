@@ -154,11 +154,16 @@ async function fetchMetadataFromBackend(
 
   const data = await response.json()
 
+  // 응답 형식 검증 (DICOM JSON은 배열 형태)
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`Invalid metadata response format for ${sopInstanceUid}: expected non-empty array`)
+  }
+
   // DICOM JSON 배열의 첫 번째 객체
   const dicomJson = data[0] as Record<string, unknown>
 
-  if (!dicomJson) {
-    throw new Error(`Empty metadata response for ${sopInstanceUid}`)
+  if (!dicomJson || typeof dicomJson !== 'object') {
+    throw new Error(`Malformed DICOM JSON for ${sopInstanceUid}`)
   }
 
   // DICOM JSON 파싱 - 필수 메타데이터 검증

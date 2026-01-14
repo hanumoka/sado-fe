@@ -195,19 +195,27 @@ export default function WadoRsViewerPage() {
   const handleBack = useCallback(() => navigate(-1), [navigate])
 
   const handleThumbnailClick = useCallback((instanceIndex: number) => {
-    const instance = filteredInstances[instanceIndex]
-    if (!instance || !studyInstanceUid || !seriesInstanceUid) return
+    if (!studyInstanceUid || !seriesInstanceUid) return
 
-    const instanceSummary: WadoRsBulkDataInstanceSummary = {
-      sopInstanceUid: instance.sopInstanceUid,
-      studyInstanceUid,
-      seriesInstanceUid,
-      numberOfFrames: instance.numberOfFrames || 1,
+    // 클릭한 인스턴스부터 시작해서 레이아웃 슬롯 수만큼 연속 할당
+    for (let slotId = 0; slotId < currentLayoutSlots; slotId++) {
+      const targetInstanceIndex = instanceIndex + slotId
+      const instance = filteredInstances[targetInstanceIndex]
+
+      if (instance) {
+        const instanceSummary: WadoRsBulkDataInstanceSummary = {
+          sopInstanceUid: instance.sopInstanceUid,
+          studyInstanceUid,
+          seriesInstanceUid,
+          numberOfFrames: instance.numberOfFrames || 1,
+        }
+        assignInstanceToSlot(slotId, instanceSummary)
+      }
     }
 
-    assignInstanceToSlot(selectedSlot, instanceSummary)
-    setSelectedSlot((selectedSlot + 1) % currentLayoutSlots)
-  }, [filteredInstances, studyInstanceUid, seriesInstanceUid, selectedSlot, currentLayoutSlots, assignInstanceToSlot, setSelectedSlot])
+    // 첫 번째 슬롯을 선택 상태로 설정
+    setSelectedSlot(0)
+  }, [filteredInstances, studyInstanceUid, seriesInstanceUid, currentLayoutSlots, assignInstanceToSlot, setSelectedSlot])
 
   const handleLayoutChange = useCallback((newLayout: GridLayout) => {
     setLayout(newLayout)

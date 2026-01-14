@@ -67,6 +67,20 @@ export interface CategoryStorageMetrics {
 }
 
 /**
+ * 테넌트별 스토리지 사용량 메트릭
+ * 원본 파일(DICOM)과 사전렌더링 파일(SYSTEM) 구분
+ */
+export interface TenantStorageMetrics {
+  tenantId: number
+  tenantName?: string
+  originalFileCount: number   // 원본 파일 개수 (DICOM)
+  originalSize: number        // 원본 파일 크기 (bytes)
+  preRenderedFileCount: number // 사전렌더링 파일 개수 (SYSTEM)
+  preRenderedSize: number     // 사전렌더링 파일 크기 (bytes)
+  totalSize: number           // 총 크기 (bytes)
+}
+
+/**
  * 스토리지 메트릭 트렌드 (시계열 데이터)
  */
 export interface StorageMetricsTrend {
@@ -102,4 +116,70 @@ export interface PageResponse<T> {
   number: number // 현재 페이지 번호 (0부터 시작)
   first: boolean // 첫 페이지 여부
   last: boolean // 마지막 페이지 여부
+}
+
+/**
+ * Tier 전환 이력
+ */
+export interface TierTransitionHistory {
+  id: number
+  fileAssetId: number
+  storagePath: string
+  fromTier: 'HOT' | 'WARM' | 'COLD'
+  toTier: 'HOT' | 'WARM' | 'COLD'
+  reason: string
+  transitionType: 'MANUAL' | 'AUTO'
+  performedBy: string
+  transitionedAt: string // ISO datetime
+  tenantId: number
+}
+
+// ========== 실시간 모니터링 타입 ==========
+
+/**
+ * 모니터링 작업 현황 응답
+ */
+export interface MonitoringTasksResponse {
+  uploadTasks: UploadTask[]
+  renderingTasks: RenderingTask[]
+  summary: TaskSummary
+}
+
+/**
+ * 업로드 작업
+ */
+export interface UploadTask {
+  instanceId: number
+  sopInstanceUid: string
+  studyDescription?: string
+  modality?: string
+  fileSize: number
+  uploadedAt: string // ISO datetime
+  renderingStatus: 'NONE' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+}
+
+/**
+ * 사전렌더링 작업
+ */
+export interface RenderingTask {
+  instanceId: number
+  sopInstanceUid: string
+  studyDescription?: string
+  modality?: string
+  status: 'PENDING' | 'PROCESSING'
+  totalFrames: number
+  renderedFrames: number
+  renderedSize?: number
+  startedAt?: string // ISO datetime
+  progressPercent: number
+}
+
+/**
+ * 작업 요약 통계
+ */
+export interface TaskSummary {
+  totalPending: number
+  totalProcessing: number
+  recentCompleted: number // 최근 1시간 내 완료
+  recentFailed: number    // 최근 1시간 내 실패
 }

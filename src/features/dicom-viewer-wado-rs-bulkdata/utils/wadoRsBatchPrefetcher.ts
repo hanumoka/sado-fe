@@ -36,7 +36,7 @@ function buildFrameUrl(
   seriesUid: string,
   sopInstanceUid: string,
   frameNumber: number,
-  format?: 'raw' | 'original'
+  format?: 'raw' | 'original' | 'jpeg-baseline'
 ): string {
   const baseUrl = `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
   // format 쿼리 파라미터 추가 (캐시 키에 포함)
@@ -48,7 +48,7 @@ function buildFrameUrl(
 
 export interface PrefetchOptions {
   preferCompressed?: boolean
-  format?: 'raw' | 'original'
+  format?: 'raw' | 'original' | 'jpeg-baseline'
   metadata?: DicomPixelMetadata
 }
 
@@ -98,7 +98,7 @@ async function prefetchWithCompression(
   uncachedFrames: number[],
   metadata: DicomPixelMetadata,
   onProgress?: (loaded: number, total: number) => void,
-  format?: 'raw' | 'original'
+  format?: 'raw' | 'original' | 'jpeg-baseline'
 ): Promise<number> {
   const frameDataMap = await retrieveFrameBatchWithMetadata(
     studyUid, seriesUid, sopInstanceUid, uncachedFrames,
@@ -147,7 +147,7 @@ async function prefetchRawPixels(
   frameNumbers: number[],
   uncachedFrames: number[],
   onProgress?: (loaded: number, total: number) => void,
-  format?: 'raw' | 'original'
+  format?: 'raw' | 'original' | 'jpeg-baseline'
 ): Promise<number> {
   const frameDataMap = await retrieveFrameBatch(studyUid, seriesUid, sopInstanceUid, uncachedFrames, format)
 
@@ -184,7 +184,9 @@ export async function prefetchAllFrames(
 ): Promise<number> {
   if (totalFrames <= 0) return 0
 
-  const CONCURRENT_BATCHES = 3
+  // 동시 배치 수: 4개 (네트워크 병렬 처리 최적화)
+  // imageRetrievalPoolManager(20)와 imageLoadPoolManager(20)에 맞춰 조정
+  const CONCURRENT_BATCHES = 4
   const allBatches: number[][] = []
   for (let i = 0; i < totalFrames; i += batchSize) {
     const frames: number[] = []

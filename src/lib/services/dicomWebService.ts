@@ -505,6 +505,20 @@ export async function getRenderedFrame(
   }
 }
 
+// ============================================================
+// BulkData Format Types
+// ============================================================
+
+/**
+ * BulkData 포맷 타입
+ *
+ * - auto: 서버 우선순위 (jpeg-baseline > compressed > raw)
+ * - jpeg-baseline: JPEG Baseline 데이터 (90% 품질, 원본 해상도)
+ * - raw/decoded: 디코딩된 픽셀 데이터
+ * - original/compressed: 원본 압축 데이터
+ */
+export type BulkDataFormat = 'auto' | 'jpeg-baseline' | 'raw' | 'decoded' | 'original' | 'compressed'
+
 /**
  * WADO-RS: 특정 프레임의 DICOM 데이터 URL 생성
  *
@@ -512,15 +526,21 @@ export async function getRenderedFrame(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (1-based)
+ * @param format 데이터 포맷 (auto/jpeg-baseline/raw/original 등)
  * @returns Frame URL
  */
 export function getFrameUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  format?: BulkDataFormat
 ): string {
-  return `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+  const baseUrl = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}`
+  if (format) {
+    return `${baseUrl}?format=${format}`
+  }
+  return baseUrl
 }
 
 /**
@@ -530,18 +550,23 @@ export function getFrameUrl(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (1-based)
+ * @param format 데이터 포맷 (auto/jpeg-baseline/raw/original 등)
  * @returns ArrayBuffer (DICOM 프레임 데이터)
  */
 export async function retrieveFrame(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber: number
+  frameNumber: number,
+  format?: BulkDataFormat
 ): Promise<ArrayBuffer> {
-  const url = getFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber)
+  const url = getFrameUrl(studyUid, seriesUid, sopInstanceUid, frameNumber, format)
+
+  // format=jpeg-baseline인 경우 Accept 헤더를 image/jpeg로 변경
+  const acceptHeader = format === 'jpeg-baseline' ? 'image/jpeg' : 'application/octet-stream'
 
   const response = await fetch(url, {
-    headers: getDicomWebHeaders('application/octet-stream'),
+    headers: getDicomWebHeaders(acceptHeader),
   })
 
   if (!response.ok) {
@@ -627,14 +652,15 @@ export interface StoreInstanceOptions {
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumbers 프레임 번호 배열 (1-based)
- * @returns FrameList URL (예: /frames/1,2,3,4,5)
+ * @param format 데이터 포맷 (auto/jpeg-baseline/raw/original 등)
+ * @returns FrameList URL (예: /frames/1,2,3,4,5?format=jpeg-baseline)
  */
 export function getFrameListUrl(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
   frameNumbers: number[],
-  format?: 'raw' | 'original'
+  format?: BulkDataFormat
 ): string {
   const frameList = frameNumbers.join(',')
   const baseUrl = `${DICOMWEB_BASE_URL}/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameList}`
@@ -667,7 +693,7 @@ export async function retrieveFrameBatch(
   seriesUid: string,
   sopInstanceUid: string,
   frameNumbers: number[],
-  format?: 'raw' | 'original'
+  format?: BulkDataFormat
 ): Promise<Map<number, ArrayBuffer>> {
   if (frameNumbers.length === 0) {
     return new Map()
@@ -707,10 +733,12 @@ export interface FrameRetrieveOptions {
   preferCompressed?: boolean
   /**
    * 데이터 포맷 선택 (URL 쿼리 파라미터로 전달)
-   * - raw: 디코딩된 픽셀 데이터
-   * - original: 원본 인코딩 데이터
+   * - auto: 서버 우선순위 (jpeg-baseline > compressed > raw)
+   * - jpeg-baseline: JPEG Baseline 데이터 (90% 품질)
+   * - raw/decoded: 디코딩된 픽셀 데이터
+   * - original/compressed: 원본 압축 데이터
    */
-  format?: 'raw' | 'original'
+  format?: BulkDataFormat
 }
 
 /**

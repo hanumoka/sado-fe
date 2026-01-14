@@ -21,6 +21,10 @@ const PAGE_SIZE = 10
 
 type SortKey =
   | 'id'
+  | 'tenantId'
+  | 'patientId'
+  | 'studyId'
+  | 'seriesId'
   | 'sopInstanceUid'
   | 'instanceNumber'
   | 'rows'
@@ -36,6 +40,10 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+  { key: 'tenantId', label: 'Tenant', className: 'w-16' },
+  { key: 'patientId', label: 'Patient', className: 'w-20' },
+  { key: 'studyId', label: 'Study', className: 'w-20' },
+  { key: 'seriesId', label: 'Series', className: 'w-20' },
   { key: 'id', label: 'ID', className: 'w-16' },
   { key: 'sopInstanceUid', label: 'SOP Instance UID' },
   { key: 'instanceNumber', label: 'No.', className: 'w-16' },
@@ -147,11 +155,17 @@ export default function InstanceListPage() {
 
       switch (key) {
         case 'id':
+        case 'patientId':
+        case 'studyId':
+        case 'seriesId':
         case 'instanceNumber':
         case 'rows':
         case 'columns':
         case 'fileSize':
           comparison = (Number(a[key]) || 0) - (Number(b[key]) || 0)
+          break
+        case 'tenantId':
+          comparison = (a[key] ?? 0) - (b[key] ?? 0)
           break
         case 'sopInstanceUid':
         case 'storageTier':
@@ -250,6 +264,20 @@ export default function InstanceListPage() {
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                       {(currentPage - 1) * PAGE_SIZE + index + 1}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                        {instance.tenantId ?? '-'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {instance.patientId ?? '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {instance.studyId ?? '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {instance.seriesId ?? '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {instance.id}

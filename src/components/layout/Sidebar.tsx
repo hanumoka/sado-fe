@@ -1,15 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Upload,
-  Users,
-  FileText,
-  Film,
-  Image,
-  BarChart3,
-  Layers,
-  X,
-} from 'lucide-react'
+import { Upload, Users, FileText, Film, Image, X, HardDrive } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 
 /**
@@ -32,19 +22,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  // Admin 전용 시스템 (메인 대시보드가 Admin 대시보드 역할)
-  { name: 'Admin 대시보드', path: '/', icon: LayoutDashboard },
+  { name: 'Study 목록', path: '/', icon: FileText },
   { name: 'DICOM 업로드', path: '/upload', icon: Upload },
   { name: '환자 목록', path: '/patients', icon: Users },
-  { name: 'Study 목록', path: '/studies', icon: FileText },
   { name: '시리즈 목록', path: '/series', icon: Film },
   { name: '인스턴스 목록', path: '/instances', icon: Image },
   // DICOM 뷰어는 Study Detail → Series 클릭으로 접근
+]
 
-  // 고급 관리 기능 (Phase 2)
-  { name: '파일시스템 관리', path: '/admin/seaweedfs', icon: Layers },
-  { name: '스토리지 모니터링', path: '/admin/storage-monitoring', icon: BarChart3 },
-  { name: 'Tier 관리', path: '/admin/tiering', icon: Layers },
+const adminNavItems: NavItem[] = [
+  { name: '파일시스템 관리', path: '/admin/storage', icon: HardDrive },
 ]
 
 /**
@@ -120,10 +107,20 @@ export default function Sidebar() {
           transition-all
           duration-300
           z-40
+          overflow-y-auto
           ${sidebarOpen ? 'w-64' : 'w-16'}
         `}
       >
         <NavContent items={navItems} showText={sidebarOpen} />
+        {/* 구분선 */}
+        <div className="mx-2 my-2 border-t border-gray-200" />
+        {/* 관리 메뉴 */}
+        {sidebarOpen && (
+          <div className="px-3 py-2">
+            <span className="text-xs font-semibold text-gray-400 uppercase">관리</span>
+          </div>
+        )}
+        <NavContent items={adminNavItems} showText={sidebarOpen} />
       </aside>
 
       {/* 모바일 오버레이 (md 미만에서만 표시) */}
@@ -171,6 +168,17 @@ export default function Sidebar() {
         {/* 네비게이션 */}
         <NavContent
           items={navItems}
+          showText={true}
+          onNavClick={closeMobileSidebar}
+        />
+        {/* 구분선 */}
+        <div className="mx-2 my-2 border-t border-gray-200" />
+        {/* 관리 메뉴 */}
+        <div className="px-3 py-2">
+          <span className="text-xs font-semibold text-gray-400 uppercase">관리</span>
+        </div>
+        <NavContent
+          items={adminNavItems}
           showText={true}
           onNavClick={closeMobileSidebar}
         />

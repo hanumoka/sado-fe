@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { v4 as uuidv4 } from 'uuid'
 import { Upload as UploadIcon, ArrowRight, Building2 } from 'lucide-react'
 import UploadDropzone from '@/features/upload/components/UploadDropzone'
 import UploadProgress from '@/features/upload/components/UploadProgress'
@@ -45,7 +46,7 @@ export default function UploadPage() {
   // 파일 선택 시 프리뷰 모드로 전환
   const handleFilesSelected = useCallback((files: File[]) => {
     const preview: PreviewFile[] = files.map((file) => ({
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       file,
       name: file.name,
       size: file.size,

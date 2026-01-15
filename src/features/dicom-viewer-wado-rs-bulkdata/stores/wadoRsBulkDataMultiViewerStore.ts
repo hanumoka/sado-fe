@@ -185,47 +185,6 @@ type WadoRsBulkDataMultiViewerStore = WadoRsBulkDataMultiViewerState & WadoRsBul
 // ==================== 헬퍼 함수 ====================
 
 /**
- * 프리로드 완료 대기 (폴링 방식)
- *
- * CRITICAL: playAll()에서 startSlotPreload()를 먼저 호출한 후 이 함수를 호출해야 함
- * isPreloading=true가 설정된 상태에서만 올바르게 동작함
- */
-async function waitForPreloadComplete(
-  slotId: number,
-  get: () => WadoRsBulkDataMultiViewerStore,
-  timeout = 30000,
-  pollInterval = 100
-): Promise<void> {
-  const startTime = Date.now()
-
-  return new Promise((resolve) => {
-    const checkPreload = () => {
-      const slot = get().slots[slotId]
-
-      // 프리로드 완료됨
-      if (slot?.isPreloaded) {
-        resolve()
-        return
-      }
-
-      // 타임아웃 체크
-      if (Date.now() - startTime > timeout) {
-        if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Preload timeout for slot ${slotId}, starting playback anyway`)
-        resolve()
-        return
-      }
-
-      // 아직 프리로드 중 - 계속 폴링
-      // NOTE: !isPreloading && !isPreloaded 조건 제거함 (race condition 유발)
-      // playAll()에서 startSlotPreload()를 먼저 호출하므로 isPreloading=true가 보장됨
-      setTimeout(checkPreload, pollInterval)
-    }
-
-    checkPreload()
-  })
-}
-
-/**
  * Progressive Playback: 초기 버퍼 대기 (폴링 방식)
  *
  * 모든 프레임이 로드될 때까지 기다리지 않고,
@@ -281,35 +240,6 @@ async function waitForInitialBuffer(
 
     check()
   })
-}
-
-// getBatchSizeForLayout 제거: Pool Manager가 동시성 제어하므로 배치 크기 고정 (BATCH_SIZE = 10)
-
-/**
- * 레이아웃에 따른 동시 프리로드 슬롯 수 결정
- *
- * 배치 프리페처 비활성화 후 Cornerstone Pool Manager가 동시성 제어
- * → 슬롯 레벨에서는 모든 슬롯 동시 시작 가능
- *
- * Pool Manager가 실제 네트워크 요청과 디코딩을 제어하므로
- * 슬롯 레벨 제한은 불필요 (메모리 스파이크 방지됨)
- *
- * WADO-RS BulkData는 3x3까지만 지원 (메모리/CPU 최적화)
- */
-function getConcurrentPreloadsForLayout(layout: WadoRsBulkDataGridLayout): number {
-  // OHIF 방식: 모든 슬롯의 초기 버퍼를 동시에 로드하여 동시 재생 시작
-  // 핵심: 전체 프레임이 아닌 초기 버퍼(15프레임)만 먼저 로드
-  // Pool Manager가 실제 네트워크 동시성을 제어함
-  switch (layout) {
-    case '1x1':
-      return 1
-    case '2x2':
-      return 4  // 4개 슬롯 동시 (초기 버퍼만)
-    case '3x3':
-      return 9  // 9개 슬롯 동시 (초기 버퍼만)
-    default:
-      return 4
-  }
 }
 
 // ==================== Store 구현 ====================

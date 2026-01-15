@@ -24,7 +24,7 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
 import { registerWadoRsBulkDataMetadataProvider } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsBulkDataMetadataProvider'
-// 배치 프리페처 비활성화: Cornerstone Pool Manager 직접 활용으로 메모리 최적화
+// OHIF 방식: L2 캐시(Fetch Interceptor) 제거, Cornerstone 내장 캐시만 사용
 // import { enableWadoRsFetchInterceptor } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsFetchInterceptor'
 import { enableRenderedInterceptor } from '@/features/dicom-viewer/utils/wadoRsRenderedInterceptor'
 
@@ -56,11 +56,14 @@ export async function initCornerstone(): Promise<void> {
 
   initializingPromise = (async () => {
     try {
-      // 1. Cornerstone Core 초기화 (CPU 렌더링 강제 - color 이미지 렌더링 문제 해결)
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Initializing core with CPU rendering...')
-      cornerstone.setUseCPURendering(true)
+      // 1. Cornerstone Core 초기화 (GPU 렌더링 사용 - OHIF 방식)
+      // 기존: CPU 렌더링 강제 (setUseCPURendering(true)) → CPU 148% 문제 발생
+      // 변경: GPU 렌더링 사용 → CPU ~10-20%로 대폭 절감 (OHIF 수준)
+      // 주의: color 이미지 렌더링 문제 발생 시 Cornerstone3D 버전 확인 필요
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Initializing core with GPU rendering...')
+      // cornerstone.setUseCPURendering(true)  // GPU 렌더링 사용을 위해 비활성화
       await cornerstone.init()
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Core initialized (CPU rendering)')
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Core initialized (GPU rendering)')
 
       // 1-0. Cornerstone 성능 최적화 설정
       // 배치 프리페처 비활성화 후 Cornerstone Pool Manager가 직접 동시성 제어
@@ -79,18 +82,19 @@ export async function initCornerstone(): Promise<void> {
       imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, cpuCores * 2)
 
       // Cornerstone 내부 캐시 크기 설정 (2GB)
-      // 배치 프리페처 비활성화로 wadoRsPixelDataCache 미사용
-      // Cornerstone 캐시만 사용하여 메모리 효율화
+      // OHIF 방식: 단일 캐시 계층으로 단순화
+      // 3x3 레이아웃 (9슬롯 × 100프레임 × ~2MB = ~1.8GB) 지원
+      // L2 캐시 제거 후 Cornerstone 캐시만 사용하므로 충분한 크기 필요
       cache.setMaxCacheSize(2 * 1024 * 1024 * 1024)
 
       if (DEBUG_INIT) console.log(`[Cornerstone] Step 1-0: Performance configured (retrieval: 6/10, decode: ${cpuCores}/${cpuCores * 2}, cache: 2GB)`)
 
-      // 1-1. WADO-RS Fetch Interceptors 활성화
-      // 배치 프리페처 비활성화: BulkData 인터셉터 제거, Cornerstone 기본 로더 사용
+      // 1-1. WADO-RS Fetch Interceptors
+      // OHIF 방식: BulkData 인터셉터(L2 캐시) 제거, Cornerstone 내장 캐시만 사용
       // Rendered 인터셉터만 유지 (Pre-rendered 모드용)
       if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Rendered Interceptor...')
-      // enableWadoRsFetchInterceptor()  // BulkData 인터셉터 비활성화 - Cornerstone 기본 로더 사용
-      enableRenderedInterceptor()      // Rendered (PNG) 인터셉터만 유지
+      // enableWadoRsFetchInterceptor()  // L2 캐시 비활성화 - OHIF 방식으로 단순화
+      enableRenderedInterceptor()        // Rendered (PNG) 인터셉터만 유지
       if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: WADO-RS Rendered Interceptor enabled')
 
       // 2. DICOM Image Loader 초기화 (v4 API)

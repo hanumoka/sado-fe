@@ -21,8 +21,9 @@ import { LRUHeapCache } from '@/lib/utils/minHeap'
 // 디버그 로그 플래그
 const DEBUG_CACHE = false
 
-// 최대 캐시 크기 (500MB)
-const MAX_CACHE_SIZE = 500 * 1024 * 1024
+// 최대 캐시 크기 (200MB)
+// 메모리 최적화: 500MB → 200MB (OHIF 수준으로 축소)
+const MAX_CACHE_SIZE = 200 * 1024 * 1024
 
 // LRU 캐시 (MinHeap 기반 - O(log N) eviction)
 const renderedCache = new LRUHeapCache<string, ArrayBuffer>({

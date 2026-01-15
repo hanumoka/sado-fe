@@ -26,9 +26,10 @@ const imageMetadataCache = new Map<string, {
 }>()
 
 // ==================== 이미지 캐시 (재요청 방지) ====================
-// 최대 캐시 크기 (200개 항목 또는 300MB)
-const MAX_IMAGE_CACHE_ENTRIES = 200
-const MAX_IMAGE_CACHE_BYTES = 300 * 1024 * 1024
+// 최대 캐시 크기 (100개 항목 또는 100MB)
+// 메모리 최적화: 200개/300MB → 100개/100MB (OHIF 수준으로 축소)
+const MAX_IMAGE_CACHE_ENTRIES = 100
+const MAX_IMAGE_CACHE_BYTES = 100 * 1024 * 1024
 
 // LRU 캐시 (MinHeap 기반 - O(log N) eviction)
 const imageCache = new LRUHeapCache<string, Types.IImage>({

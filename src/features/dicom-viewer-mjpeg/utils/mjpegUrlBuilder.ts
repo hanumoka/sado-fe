@@ -4,8 +4,10 @@
  * MJPEG 스트리밍 URL 생성 유틸리티
  */
 
-import { API_BASE_URL } from '@/lib/config'
 import type { MjpegResolution } from '../types'
+
+// Vite 프록시를 통해 /dicomweb → http://localhost:10201 로 전달
+// 절대 URL 대신 상대 경로 사용 (CORS 문제 방지)
 
 /**
  * MJPEG 스트리밍 URL 생성
@@ -17,7 +19,7 @@ import type { MjpegResolution } from '../types'
  *
  * @example
  * buildMjpegStreamUrl('1.2.3.4.5', 256, 30)
- * // => 'http://localhost:10201/dicomweb/mjpeg/1.2.3.4.5?resolution=256&frameRate=30'
+ * // => '/dicomweb/mjpeg/1.2.3.4.5?resolution=256&frameRate=30'
  */
 export function buildMjpegStreamUrl(
   sopInstanceUid: string,
@@ -28,7 +30,7 @@ export function buildMjpegStreamUrl(
     resolution: String(resolution),
     frameRate: String(frameRate),
   })
-  return `${API_BASE_URL}/dicomweb/mjpeg/${sopInstanceUid}?${params.toString()}`
+  return `/dicomweb/mjpeg/${sopInstanceUid}?${params.toString()}`
 }
 
 /**
@@ -38,5 +40,5 @@ export function buildMjpegStreamUrl(
  * @returns MJPEG 정보 API URL
  */
 export function buildMjpegInfoUrl(sopInstanceUid: string): string {
-  return `${API_BASE_URL}/dicomweb/mjpeg/${sopInstanceUid}/info`
+  return `/dicomweb/mjpeg/${sopInstanceUid}/info`
 }

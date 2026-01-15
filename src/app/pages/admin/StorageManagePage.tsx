@@ -46,6 +46,7 @@ import {
   getFilerDownloadUrl,
   fetchMonitoringTasks,
 } from '@/lib/services/adminService'
+import { formatBytes } from '@/lib/utils'
 import type { ClusterStatus, VolumeInfo, FilerEntry } from '@/types/seaweedfs'
 
 // Components
@@ -61,14 +62,6 @@ import StorageTrendsChart from '@/components/charts/StorageTrendsChart'
 type Tab = 'overview' | 'monitoring' | 'tiering' | 'seaweedfs'
 type TrendRange = '7d' | '30d' | '90d'
 type SeaweedFSSubTab = 'cluster' | 'volumes' | 'filer'
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
 
 function formatTime(isoString: string): string {
   const date = new Date(isoString)

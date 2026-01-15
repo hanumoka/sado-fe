@@ -5,9 +5,9 @@
  * cornerstoneWADOImageLoader가 처리하는 'wadouri:' 스킴 사용
  */
 
-import { API_BASE_URL } from '@/lib/config'
-
-const API_BASE = API_BASE_URL
+// Vite 프록시를 통해 /dicomweb → http://localhost:10201 로 전달
+// 절대 URL 대신 상대 경로 사용 (CORS 문제 방지)
+const API_BASE = ''
 
 /**
  * WADO-URI imageId 생성
@@ -21,11 +21,11 @@ const API_BASE = API_BASE_URL
  * @example
  * // 단일 프레임
  * createWadoUriImageId('1.2.3', '1.2.4', '1.2.5')
- * // → 'wadouri:http://localhost:10201/dicomweb/wado?requestType=WADO&studyUID=1.2.3&seriesUID=1.2.4&objectUID=1.2.5'
+ * // → 'wadouri:/dicomweb/wado?requestType=WADO&studyUID=1.2.3&seriesUID=1.2.4&objectUID=1.2.5'
  *
  * // 멀티프레임 (프레임 5)
  * createWadoUriImageId('1.2.3', '1.2.4', '1.2.5', 5)
- * // → 'wadouri:http://localhost:10201/dicomweb/wado?requestType=WADO&studyUID=1.2.3&seriesUID=1.2.4&objectUID=1.2.5&frame=6'
+ * // → 'wadouri:/dicomweb/wado?requestType=WADO&studyUID=1.2.3&seriesUID=1.2.4&objectUID=1.2.5&frame=6'
  */
 export function createWadoUriImageId(
   studyUid: string,
@@ -113,8 +113,13 @@ export function getWadoUriThumbnailUrl(
  */
 export function getFrameNumberFromImageId(imageId: string): number {
   try {
-    const url = new URL(imageId.replace('wadouri:', ''))
-    const frameParam = url.searchParams.get('frame')
+    // wadouri: 스킴 제거 후 쿼리 파라미터 추출
+    const urlPart = imageId.replace('wadouri:', '')
+    const queryIndex = urlPart.indexOf('?')
+    if (queryIndex === -1) return 0
+
+    const params = new URLSearchParams(urlPart.slice(queryIndex + 1))
+    const frameParam = params.get('frame')
     if (frameParam) {
       // frame 파라미터는 1-based, 반환값은 0-based
       return parseInt(frameParam, 10) - 1
@@ -133,8 +138,13 @@ export function getFrameNumberFromImageId(imageId: string): number {
  */
 export function getSopInstanceUidFromImageId(imageId: string): string | null {
   try {
-    const url = new URL(imageId.replace('wadouri:', ''))
-    return url.searchParams.get('objectUID')
+    // wadouri: 스킴 제거 후 쿼리 파라미터 추출
+    const urlPart = imageId.replace('wadouri:', '')
+    const queryIndex = urlPart.indexOf('?')
+    if (queryIndex === -1) return null
+
+    const params = new URLSearchParams(urlPart.slice(queryIndex + 1))
+    return params.get('objectUID')
   } catch {
     return null
   }

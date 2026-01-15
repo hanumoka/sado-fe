@@ -30,7 +30,7 @@ export default function SeriesSearchForm({ onSearch }: SeriesSearchFormProps) {
     onSearch({})
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSearch()
     }
@@ -47,7 +47,7 @@ export default function SeriesSearchForm({ onSearch }: SeriesSearchFormProps) {
           <select
             value={modality}
             onChange={(e) => setModality(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="ALL">전체</option>

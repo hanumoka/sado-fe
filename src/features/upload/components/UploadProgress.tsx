@@ -1,4 +1,5 @@
 import { CheckCircle, XCircle, Loader2, FileText } from 'lucide-react'
+import { formatBytes } from '@/lib/utils'
 import type { UploadFile } from '../types/upload'
 
 /**
@@ -19,12 +20,6 @@ interface UploadProgressProps {
 export default function UploadProgress({ files }: UploadProgressProps) {
   if (files.length === 0) {
     return null
-  }
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   return (
@@ -63,7 +58,7 @@ export default function UploadProgress({ files }: UploadProgressProps) {
                     {file.name}
                   </p>
                   <p className="text-sm text-gray-500 ml-2">
-                    {formatFileSize(file.size)}
+                    {formatBytes(file.size)}
                   </p>
                 </div>
 

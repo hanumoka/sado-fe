@@ -17,8 +17,11 @@
 
 import { retrieveRenderedFrameBatch } from '@/lib/services/dicomWebService'
 import { cacheRenderedFrame, hasRenderedFrame } from './wadoRsRenderedCache'
-import { API_BASE_URL } from '@/lib/config'
 import { formatBytes } from '@/lib/utils'
+
+// Vite 프록시를 통해 /dicomweb → http://localhost:10201 로 전달
+// 절대 URL 대신 상대 경로 사용 (CORS 문제 방지)
+const API_BASE = ''
 
 // 디버그 로그 플래그
 const DEBUG_PREFETCHER = false
@@ -57,7 +60,7 @@ function buildRenderedFrameUrl(
   frameNumber: number,
   resolution?: number
 ): string {
-  const baseUrl = `${API_BASE_URL}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
+  const baseUrl = `${API_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNumber}/rendered`
   return resolution && resolution !== 512 ? `${baseUrl}?resolution=${resolution}` : baseUrl
 }
 

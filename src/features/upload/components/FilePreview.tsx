@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { CheckSquare, Square, File, X, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { formatBytes } from '@/lib/utils'
 import type { PreviewFile, PreviewSummary } from '../types/upload'
 
 /**
@@ -44,14 +45,6 @@ export default function FilePreview({
     }
   }, [files])
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024)
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
-
   const handleConfirm = () => {
     const selectedFiles = files.filter((f) => f.selected).map((f) => f.file)
     onConfirm(selectedFiles)
@@ -71,7 +64,7 @@ export default function FilePreview({
             </h3>
             <p className="text-sm text-gray-600 mt-1">
               {summary.selectedFiles}/{summary.totalFiles}개 선택됨 (
-              {formatFileSize(summary.selectedSize)})
+              {formatBytes(summary.selectedSize)})
             </p>
           </div>
           <div className="flex gap-2">
@@ -132,7 +125,7 @@ export default function FilePreview({
             {/* 파일 크기 */}
             <div className="flex-shrink-0 ml-4">
               <p className="text-sm text-gray-500">
-                {formatFileSize(file.size)}
+                {formatBytes(file.size)}
               </p>
             </div>
           </div>
@@ -143,7 +136,7 @@ export default function FilePreview({
       <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 rounded-b-lg">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
-            총 {formatFileSize(summary.totalSize)}
+            총 {formatBytes(summary.totalSize)}
           </p>
           <div className="flex gap-3">
             <Button variant="outline" onClick={onCancel}>

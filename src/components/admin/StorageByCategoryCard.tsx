@@ -8,19 +8,12 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Building2, FileText, Image } from 'lucide-react'
+import { formatBytes } from '@/lib/utils'
 import type { TenantStorageMetrics } from '@/types'
 
 interface StorageByCategoryCardProps {
   data: TenantStorageMetrics[]
   isLoading?: boolean
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 export default function StorageByCategoryCard({ data, isLoading }: StorageByCategoryCardProps) {

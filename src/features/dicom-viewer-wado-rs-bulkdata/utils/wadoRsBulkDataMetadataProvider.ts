@@ -13,13 +13,14 @@
  */
 import { metaData } from '@cornerstonejs/core'
 import { getTenantId } from '@/lib/tenantStore'
-import { API_BASE_URL } from '@/lib/config'
 import { withRetry } from '@/lib/errors'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_PROVIDER = false
 
-const API_BASE = API_BASE_URL
+// Vite 프록시를 통해 /dicomweb → http://localhost:10201 로 전달
+// 절대 URL 대신 상대 경로 사용 (CORS 문제 방지)
+const API_BASE = ''
 
 /**
  * DICOM 픽셀 메타데이터

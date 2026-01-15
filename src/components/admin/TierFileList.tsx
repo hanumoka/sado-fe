@@ -8,20 +8,13 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import { fetchTieringFiles } from '@/lib/services/adminService'
+import { formatBytes } from '@/lib/utils'
 import type { FileAssetSummary } from '@/types'
 
 type Tier = 'HOT' | 'WARM' | 'COLD'
 
 interface TierFileListProps {
   initialTier?: Tier
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 function formatDate(dateString: string): string {

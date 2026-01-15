@@ -6,6 +6,7 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import type { TierDistribution } from '@/types'
+import { formatBytes } from '@/lib/utils'
 
 interface TierDistributionChartProps {
   data: TierDistribution
@@ -16,14 +17,6 @@ const COLORS = {
   hot: '#ef4444',   // red-500
   warm: '#eab308',  // yellow-500
   cold: '#3b82f6',  // blue-500
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 export default function TierDistributionChart({ data, isLoading }: TierDistributionChartProps) {

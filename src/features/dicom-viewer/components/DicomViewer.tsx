@@ -8,7 +8,6 @@ import {
   cornerstoneTools,
 } from '@/lib/cornerstone'
 import { getWadoUriUrl } from '@/lib/services'
-import { API_BASE_URL } from '@/lib/config'
 import type {
   ViewerTool,
   WindowLevelPreset,
@@ -118,7 +117,8 @@ export default function DicomViewer({
           series.seriesInstanceUid,
           instance.sopInstanceUid
         )
-        return `wadouri:${API_BASE_URL}${wadoUrl}`
+        // Vite 프록시를 통해 /dicomweb → http://localhost:10201 로 전달 (CORS 방지)
+        return `wadouri:${wadoUrl}`
       })
 
       if (DEBUG_VIEWER) console.log('[DicomViewer] Loading 2x2 grid with', allImageIds.length, 'total images')

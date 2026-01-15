@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { ArrowUpDown, ArrowUp, ArrowDown, Image } from 'lucide-react'
+import { formatBytes } from '@/lib/utils'
 import type { Instance } from '../types/instance'
 import { Pagination } from '@/components/common'
 
@@ -65,16 +66,6 @@ function getTierBadgeColor(tier?: string): string {
     default:
       return 'bg-gray-100 text-gray-800'
   }
-}
-
-/**
- * 파일 크기 포맷팅
- */
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return '-'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 /**
@@ -231,7 +222,7 @@ export default function InstanceList({
                   {instance.columns ?? '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatFileSize(instance.fileSize)}
+                  {instance.fileSize ? formatBytes(instance.fileSize) : '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span

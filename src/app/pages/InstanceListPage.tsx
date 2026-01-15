@@ -3,6 +3,7 @@ import { Image, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-reac
 import { PageHeader, Pagination } from '@/components/common'
 import { useInstanceList } from '@/features/instance/hooks/useInstanceList'
 import InstanceSearchForm from '@/features/instance/components/InstanceSearchForm'
+import { formatBytes } from '@/lib/utils'
 import type { InstanceSearchParams } from '@/features/instance/types/instance'
 
 /**
@@ -65,13 +66,6 @@ function getTierBadgeColor(tier?: string): string {
     default:
       return 'bg-gray-100 text-gray-800'
   }
-}
-
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return '-'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function formatDate(dateString?: string): string {
@@ -300,7 +294,7 @@ export default function InstanceListPage() {
                       {instance.columns ?? '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatFileSize(instance.fileSize)}
+                      {instance.fileSize ? formatBytes(instance.fileSize) : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span

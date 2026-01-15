@@ -40,7 +40,7 @@ export default function PatientSearchForm({
   }
 
   // Enter 키 이벤트
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSearch()
     }
@@ -58,7 +58,7 @@ export default function PatientSearchForm({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="이름을 입력하세요"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />

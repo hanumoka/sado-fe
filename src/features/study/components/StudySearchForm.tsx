@@ -38,7 +38,7 @@ export default function StudySearchForm({ onSearch }: StudySearchFormProps) {
     onSearch({})
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSearch()
     }
@@ -56,7 +56,7 @@ export default function StudySearchForm({ onSearch }: StudySearchFormProps) {
             type="text"
             value={patientName}
             onChange={(e) => setPatientName(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="예: John Doe"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -71,7 +71,7 @@ export default function StudySearchForm({ onSearch }: StudySearchFormProps) {
             type="date"
             value={studyDate}
             onChange={(e) => setStudyDate(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>

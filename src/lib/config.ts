@@ -5,28 +5,20 @@
  *
  * 모든 환경 변수 접근은 이 파일을 통해 수행
  *
- * POC 단계: DICOMweb 표준 API만 사용, Gateway API는 비활성화
- */
-
-/**
- * API Base URL
+ * ## 환경별 API 라우팅
+ * - 개발: Vite 프록시가 /dicomweb, /api 요청을 백엔드로 전달
+ * - 프로덕션: Nginx 등 리버스 프록시 필요
  *
- * 환경 변수 VITE_API_BASE_URL이 설정되어 있으면 해당 값을 사용하고,
- * 그렇지 않으면 기본값 'http://localhost:10201'을 사용합니다.
- *
- * 사용처:
- * - WADO-RS/WADO-URI imageId 생성
- * - 배치 프리페처 URL 생성
- * - 썸네일 URL 생성
+ * ## 환경 변수 (vite.config.ts에서 사용)
+ * - VITE_API_TARGET: 백엔드 서버 주소 (기본값: http://localhost:10201)
  */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10201'
 
 /**
  * API 설정
  *
- * POC 단계: DICOMweb 표준 API만 사용
- * - baseUrl을 빈 문자열로 설정하여 상대 경로(/dicomweb) 사용
- * - Vite proxy를 통해 /dicomweb → http://localhost:10201 로 프록시
+ * 상대 경로(/dicomweb, /api)를 사용하여 CORS 문제 방지
+ * - 개발: Vite proxy가 VITE_API_TARGET으로 전달
+ * - 프로덕션: Nginx 등 리버스 프록시가 백엔드로 전달
  */
 export const apiConfig = {
   /** API 서버 Base URL - 빈 문자열 (상대 경로 사용) */

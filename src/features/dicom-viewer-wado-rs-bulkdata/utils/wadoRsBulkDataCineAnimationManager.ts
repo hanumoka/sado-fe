@@ -2,9 +2,10 @@
  * WadoRsBulkDataCineAnimationManager - WADO-RS BulkData 뷰어용 Cine 애니메이션 관리자
  *
  * BaseCineAnimationManager를 상속하여 WADO-RS BulkData store와 연동
+ * Progressive Playback 지원: 프레임이 로드되지 않았으면 버퍼링
  */
 
-import { BaseCineAnimationManager } from '@/lib/utils/BaseCineAnimationManager'
+import { BaseCineAnimationManager, type FrameAdvanceResult } from '@/lib/utils/BaseCineAnimationManager'
 import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMultiViewerStore'
 
 // 디버그 로그 플래그 (필요시 true로 변경)
@@ -15,6 +16,64 @@ class WadoRsBulkDataCineAnimationManager extends BaseCineAnimationManager {
     super()
     this.debugEnabled = DEBUG_CINE
     this.logPrefix = '[WadoRsBulkDataCineManager]'
+  }
+
+  /**
+   * 프레임 전진 전 버퍼링 체크 (Progressive Playback)
+   *
+   * 다음 프레임이 로드되지 않았으면 shouldAdvance=false 반환하여
+   * 현재 프레임에 머물며 버퍼링 상태 표시
+   */
+  protected override onFrameAdvance(slotId: number, currentIndex: number, totalFrames: number): FrameAdvanceResult {
+    const store = useWadoRsBulkDataMultiViewerStore.getState()
+    const slot = store.slots[slotId]
+
+    if (!slot) {
+      return { shouldAdvance: false, nextIndex: currentIndex }
+    }
+
+    const nextIndex = (currentIndex + 1) % totalFrames
+
+    // 다음 프레임이 로드되었는지 확인
+    const isNextFrameLoaded = slot.loadedFrames.has(nextIndex)
+
+    if (!isNextFrameLoaded) {
+      // 버퍼링 상태 표시 (isBuffering = true)
+      if (!slot.isBuffering) {
+        useWadoRsBulkDataMultiViewerStore.setState((state) => ({
+          slots: {
+            ...state.slots,
+            [slotId]: {
+              ...state.slots[slotId],
+              isBuffering: true,
+            },
+          },
+        }))
+      }
+
+      if (DEBUG_CINE) {
+        console.log(`[WadoRsBulkDataCineManager] Buffering slot ${slotId}: frame ${nextIndex} not loaded`)
+      }
+
+      // 현재 프레임에 머물기
+      return { shouldAdvance: false, nextIndex: currentIndex }
+    }
+
+    // 버퍼링 상태 해제 (isBuffering = false)
+    if (slot.isBuffering) {
+      useWadoRsBulkDataMultiViewerStore.setState((state) => ({
+        slots: {
+          ...state.slots,
+          [slotId]: {
+            ...state.slots[slotId],
+            isBuffering: false,
+          },
+        },
+      }))
+    }
+
+    // 다음 프레임으로 전진
+    return { shouldAdvance: true, nextIndex }
   }
 
   /**

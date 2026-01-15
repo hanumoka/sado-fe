@@ -71,23 +71,22 @@ export async function initCornerstone(): Promise<void> {
       const { RequestType } = Enums
       const cpuCores = navigator.hardwareConcurrency || 4
 
-      // Pool Manager 최적화: Cornerstone이 직접 동시성 제어
-      // - imageRetrievalPoolManager: 네트워크 요청 관리
-      //   Interaction: 사용자 상호작용 (우선순위 높음)
-      //   Prefetch: 백그라운드 프리로드
-      // - imageLoadPoolManager: 디코딩 작업 관리 (Web Worker)
+      // Pool Manager 최적화: OHIF 방식 동시 로드 지원
+      // - Interaction: 사용자 상호작용 (높은 우선순위)
+      // - Prefetch: 초기 버퍼 및 백그라운드 프리로드
+      // 9슬롯 × 초기버퍼(15프레임)을 동시에 로드하기 위해 충분한 동시성 필요
       imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Interaction, 6)
-      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, 10)
+      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, 6)
       imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Interaction, cpuCores)
-      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, cpuCores * 2)
+      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, cpuCores)
 
-      // Cornerstone 내부 캐시 크기 설정 (2GB)
-      // OHIF 방식: 단일 캐시 계층으로 단순화
-      // 3x3 레이아웃 (9슬롯 × 100프레임 × ~2MB = ~1.8GB) 지원
-      // L2 캐시 제거 후 Cornerstone 캐시만 사용하므로 충분한 크기 필요
-      cache.setMaxCacheSize(2 * 1024 * 1024 * 1024)
+      // Cornerstone 내부 캐시 크기 설정 (1GB)
+      // 메모리 최적화: 2GB → 1GB (OHIF 수준)
+      // LRU eviction으로 오래된 프레임 자동 해제
+      // 주의: 너무 작으면 무한 네트워크 요청 발생 가능 (이전 800MB에서 문제 발생)
+      cache.setMaxCacheSize(1024 * 1024 * 1024)
 
-      if (DEBUG_INIT) console.log(`[Cornerstone] Step 1-0: Performance configured (retrieval: 6/10, decode: ${cpuCores}/${cpuCores * 2}, cache: 2GB)`)
+      if (DEBUG_INIT) console.log(`[Cornerstone] Step 1-0: Performance configured (retrieval: 6/6, decode: ${cpuCores}/${cpuCores}, cache: 1GB)`)
 
       // 1-1. WADO-RS Fetch Interceptors
       // OHIF 방식: BulkData 인터셉터(L2 캐시) 제거, Cornerstone 내장 캐시만 사용

@@ -148,8 +148,8 @@ interface WadoRsBulkDataMultiViewerActions {
   stopAll: () => void
   toggleGlobalPlay: () => Promise<void>
 
-  // 프리로딩
-  preloadSlotFrames: (slotId: number) => Promise<void>
+  // 프리로딩 (2단계: 초기 버퍼 → 나머지 백그라운드)
+  preloadSlotFrames: (slotId: number, initialBufferOnly?: boolean) => Promise<void>
   startSlotPreload: (slotId: number) => void
   updateSlotPreloadProgress: (slotId: number, progress: number) => void
   finishSlotPreload: (slotId: number) => void
@@ -297,15 +297,16 @@ async function waitForInitialBuffer(
  * WADO-RS BulkData는 3x3까지만 지원 (메모리/CPU 최적화)
  */
 function getConcurrentPreloadsForLayout(layout: WadoRsBulkDataGridLayout): number {
-  // Pool Manager가 동시성 제어하므로 모든 슬롯 동시 프리로드 가능
+  // OHIF 방식: 모든 슬롯의 초기 버퍼를 동시에 로드하여 동시 재생 시작
+  // 핵심: 전체 프레임이 아닌 초기 버퍼(15프레임)만 먼저 로드
+  // Pool Manager가 실제 네트워크 동시성을 제어함
   switch (layout) {
     case '1x1':
       return 1
     case '2x2':
-      return 4
+      return 4  // 4개 슬롯 동시 (초기 버퍼만)
     case '3x3':
-      return 9
-    // 4x4, 5x5는 UI에서 제한되어 더 이상 도달 불가
+      return 9  // 9개 슬롯 동시 (초기 버퍼만)
     default:
       return 4
   }
@@ -814,54 +815,44 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
-    // 2. 레이아웃별 동시 프리로드 슬롯 수 결정
-    // 4x4에서 16개 슬롯이 동시에 프리로드하면 캐시 eviction 발생 (500MB 제한)
-    // 동시 프리로드 슬롯 수를 제한하여 캐시 경쟁 방지
-    const maxConcurrentPreloads = getConcurrentPreloadsForLayout(layout)
-    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Starting preload for ${multiframeSlotIds.length} slots (max concurrent: ${maxConcurrentPreloads})`)
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] OHIF-style playAll: ${multiframeSlotIds.length} slots`)
 
-    // 프리로드가 필요한 슬롯 필터링
+    // OHIF 방식: 2단계 프리로드 + 동시 재생
+    // Phase 1: 모든 슬롯의 초기 버퍼(15프레임)를 동시에 로드
+    // Phase 2: 초기 버퍼 완료 후 동시 재생 시작
+    // Phase 3: 백그라운드에서 나머지 프레임 로드
+
+    // 프리로드가 필요한 슬롯 필터링 (이미 완료된 슬롯 제외)
     const slotsNeedingPreload = multiframeSlotIds.filter((slotId) => {
       const slot = get().slots[slotId]
-      return !slot?.isPreloaded && !slot?.isPreloading
+      return !slot?.isPreloaded
     })
 
-    // 3. 동시성 제한하여 프리로드 실행 (배치 단위)
-    // 캐시 eviction 방지: 한 번에 maxConcurrentPreloads개 슬롯만 프리로드
-    for (let i = 0; i < slotsNeedingPreload.length; i += maxConcurrentPreloads) {
-      const batch = slotsNeedingPreload.slice(i, i + maxConcurrentPreloads)
+    // Phase 1: 모든 슬롯의 초기 버퍼 동시 로드
+    if (slotsNeedingPreload.length > 0) {
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1: Loading initial buffers for ${slotsNeedingPreload.length} slots`)
 
-      // 배치 내 슬롯들의 isPreloading=true 설정 (동기)
-      for (const slotId of batch) {
+      // 모든 슬롯의 isPreloading=true 설정 (동기)
+      for (const slotId of slotsNeedingPreload) {
         get().startSlotPreload(slotId)
       }
 
-      // 배치 내 슬롯들 프리로드 시작 및 완료 대기
+      // 모든 슬롯의 초기 버퍼 동시 로드 (initialBufferOnly=true)
       await Promise.all(
-        batch.map(async (slotId) => {
+        slotsNeedingPreload.map(async (slotId) => {
           try {
-            await get().preloadSlotFrames(slotId)
+            await get().preloadSlotFrames(slotId, true) // 초기 버퍼만
           } catch (error) {
-            console.warn(`[WadoRsBulkDataViewer] Preload failed for slot ${slotId}:`, error)
+            console.warn(`[WadoRsBulkDataViewer] Initial buffer failed for slot ${slotId}:`, error)
           }
         })
       )
 
-      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Preload batch completed: slots ${batch.join(', ')}`)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1 completed: Initial buffers loaded`)
     }
 
-    // 4. 이미 프리로드된 슬롯들도 포함하여 완료 확인
-    await Promise.all(
-      multiframeSlotIds.map(async (slotId) => {
-        const slot = get().slots[slotId]
-        if (slot?.isPreloaded) return
-        await waitForPreloadComplete(slotId, get)
-      })
-    )
-
-    // 5. 모든 슬롯 프리로드 완료 후 일괄 재생 시작
-    // CRITICAL: 개별 슬롯이 즉시 재생하면 다른 슬롯의 프리로드 중 캐시 eviction 발생 가능
-    // 모든 프리로드 완료 후 일괄 재생하여 캐시 안정성 확보
+    // Phase 2: 모든 슬롯 동시 재생 시작
+    // 초기 버퍼가 로드되었으므로 즉시 재생 가능
     const updatedSlots: Record<number, WadoRsBulkDataSlotState> = {}
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
@@ -880,7 +871,18 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       },
     }))
 
-    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] playAll completed: ${multiframeSlotIds.length} slots started playing`)
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 2: All ${multiframeSlotIds.length} slots started playing simultaneously`)
+
+    // Phase 3: 백그라운드에서 나머지 프레임 로드 (await 없이)
+    // 재생과 동시에 나머지 프레임을 점진적으로 로드
+    for (const slotId of slotsNeedingPreload) {
+      // 비동기로 나머지 프레임 로드 (await 없이 백그라운드 실행)
+      get().preloadSlotFrames(slotId, false).catch((error) => {
+        console.warn(`[WadoRsBulkDataViewer] Background preload failed for slot ${slotId}:`, error)
+      })
+    }
+
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 3: Background preload started for remaining frames`)
   },
 
   pauseAll: () => {
@@ -947,7 +949,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
 
   // ==================== 프리로딩 ====================
 
-  preloadSlotFrames: async (slotId) => {
+  preloadSlotFrames: async (slotId, initialBufferOnly = false) => {
     const slot = get().slots[slotId]
     if (!slot?.instance) {
       if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Cannot preload slot ${slotId}: no instance`)
@@ -962,6 +964,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
 
     const { numberOfFrames } = slot.instance
     if (numberOfFrames <= 1) {
+      get().markFrameLoaded(slotId, 0)
       get().finishSlotPreload(slotId)
       return
     }
@@ -974,23 +977,27 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     // rendered 모드는 별도의 Rendered Loader가 처리하므로 배치 프리페치 불필요
     const globalFormat = get().globalFormat
     if (globalFormat === 'rendered') {
+      // rendered 모드에서도 모든 프레임을 로드된 것으로 마킹
+      for (let i = 0; i < numberOfFrames; i++) {
+        get().markFrameLoaded(slotId, i)
+      }
       get().finishSlotPreload(slotId)
       return
     }
 
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
-      const BATCH_SIZE = 10 // Pool Manager가 동시성 제어하므로 배치 크기 고정
+
+      // OHIF 방식: 2단계 프리로드
+      // Phase 1: 초기 버퍼 (15프레임 또는 15%) - 빠른 재생 시작
+      // Phase 2: 나머지 프레임 - 백그라운드 로드
+      const INITIAL_BUFFER_SIZE = Math.min(15, Math.ceil(numberOfFrames * 0.15))
+      const BATCH_SIZE = 10
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone wadors 로더가 PixelData를 디코딩할 수 있음
       if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
       await fetchAndCacheMetadata(studyInstanceUid, seriesInstanceUid, sopInstanceUid)
       if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Metadata cached for slot ${slotId}`)
-
-      // Cornerstone 로더로 직접 이미지 로드
-      // Pool Manager가 동시성 제어 → 메모리 스파이크 방지
-      // 배치 프리페처 제거로 중복 캐싱 없음 (Cornerstone 캐시만 사용)
-      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Loading ${numberOfFrames} frames via Cornerstone (Pool Manager controlled)`)
 
       // globalFormat: 'jpeg-baseline' | 'original' | 'raw' (rendered 제외됨)
       const imageIds = createWadoRsBulkDataImageIds(
@@ -1001,33 +1008,57 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         globalFormat
       )
 
+      // 로드할 프레임 범위 결정
+      const framesToLoad = initialBufferOnly
+        ? Math.min(INITIAL_BUFFER_SIZE, numberOfFrames)
+        : numberOfFrames
+
+      if (DEBUG_STORE) {
+        console.log(
+          `[WadoRsBulkDataViewer] Loading ${framesToLoad}/${numberOfFrames} frames for slot ${slotId} ` +
+          `(initialBufferOnly: ${initialBufferOnly})`
+        )
+      }
+
       let loadedCount = 0
 
       // 배치 단위로 로드 (진행률 표시용)
-      for (let i = 0; i < imageIds.length; i += BATCH_SIZE) {
-        const batch = imageIds.slice(i, i + BATCH_SIZE)
+      for (let i = 0; i < framesToLoad; i += BATCH_SIZE) {
+        const batchEnd = Math.min(i + BATCH_SIZE, framesToLoad)
+        const batch = imageIds.slice(i, batchEnd)
+        const batchStartIndex = i
 
         await Promise.all(
-          batch.map((imageId) =>
-            loadWadoRsBulkDataImage(imageId)
+          batch.map((imageId, batchIndex) => {
+            const frameIndex = batchStartIndex + batchIndex
+            return loadWadoRsBulkDataImage(imageId)
               .then(() => {
                 loadedCount++
-                // 10% 단위로만 업데이트 (리렌더링 최소화)
+                // 프레임 로드 완료 마킹 (Progressive Playback 지원)
+                get().markFrameLoaded(slotId, frameIndex)
+                // 10% 단위로만 진행률 업데이트 (리렌더링 최소화)
                 const progress = Math.floor((loadedCount / numberOfFrames) * 10) * 10
                 get().updateSlotPreloadProgress(slotId, progress)
               })
               .catch((error: unknown) => {
-                if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Failed to load frame for slot ${slotId}:`, error)
+                if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Failed to load frame ${frameIndex} for slot ${slotId}:`, error)
                 loadedCount++
+                // 실패해도 마킹하여 무한 재시도 방지
+                get().markFrameLoaded(slotId, frameIndex)
                 const progress = Math.floor((loadedCount / numberOfFrames) * 10) * 10
                 get().updateSlotPreloadProgress(slotId, progress)
               })
-          )
+          })
         )
       }
 
-      get().finishSlotPreload(slotId)
-      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Preload completed for slot ${slotId}`)
+      // initialBufferOnly일 때는 finishSlotPreload 호출하지 않음 (아직 전체 로드 안됨)
+      if (!initialBufferOnly) {
+        get().finishSlotPreload(slotId)
+        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Full preload completed for slot ${slotId}`)
+      } else {
+        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Initial buffer loaded for slot ${slotId} (${loadedCount} frames)`)
+      }
     } catch (error) {
       const errorMessage = handleDicomError(error, 'preloadSlotFrames')
       get().setSlotError(slotId, errorMessage)

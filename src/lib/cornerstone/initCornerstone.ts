@@ -24,15 +24,65 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
 import { registerWadoRsBulkDataMetadataProvider } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsBulkDataMetadataProvider'
-// OHIF 방식: L2 캐시(Fetch Interceptor) 제거, Cornerstone 내장 캐시만 사용
-// import { enableWadoRsFetchInterceptor } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsFetchInterceptor'
+// L2 캐시 재활성화: 프리페치 효과 극대화
+import { enableWadoRsFetchInterceptor } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsFetchInterceptor'
 import { enableRenderedInterceptor } from '@/features/dicom-viewer/utils/wadoRsRenderedInterceptor'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_INIT = false
 
+// 렌더링 모드 타입
+export type RenderingMode = 'cpu' | 'gpu'
+
+// sessionStorage 키
+const RENDERING_MODE_STORAGE_KEY = 'cornerstone-rendering-mode'
+
+// 현재 렌더링 모드 상태
+let currentRenderingMode: RenderingMode = 'cpu'
 let initialized = false
 let initializingPromise: Promise<void> | null = null
+
+/**
+ * GPU 렌더링 지원 여부 확인 (WebGL2)
+ */
+export function checkGpuSupport(): boolean {
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl2')
+    return !!gl
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 현재 렌더링 모드 반환
+ */
+export function getRenderingMode(): RenderingMode {
+  return currentRenderingMode
+}
+
+/**
+ * CPU 렌더링 사용 중인지 확인
+ */
+export function isUsingCPURendering(): boolean {
+  return currentRenderingMode === 'cpu'
+}
+
+/**
+ * sessionStorage에서 저장된 렌더링 모드 복원
+ */
+function getInitialRenderingMode(): RenderingMode {
+  try {
+    const stored = sessionStorage.getItem(RENDERING_MODE_STORAGE_KEY)
+    if (stored === 'gpu' && checkGpuSupport()) {
+      return 'gpu'
+    }
+  } catch {
+    // sessionStorage 접근 실패 시 기본값 사용
+  }
+  return 'cpu' // 기본값: CPU (안정성 우선)
+}
 
 /**
  * Cornerstone3D 초기화
@@ -56,14 +106,16 @@ export async function initCornerstone(): Promise<void> {
 
   initializingPromise = (async () => {
     try {
-      // 1. Cornerstone Core 초기화 (CPU 렌더링 사용)
-      // GPU 렌더링 시 RGBA 이미지 (WADO-RS Rendered) 첫 사이클 깨짐 문제 발생
-      // 근본 원인 미해결 → CPU 렌더링으로 임시 해결 (CPU 사용량 증가: 65% → 148%)
-      // TODO: Cornerstone3D GPU 렌더링 RGBA 이슈 해결 시 GPU로 복원
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Initializing core with CPU rendering...')
-      cornerstone.setUseCPURendering(true)
+      // 1. Cornerstone Core 초기화
+      // sessionStorage에서 저장된 렌더링 모드 복원 (기본값: CPU)
+      // GPU 렌더링 시 RGBA 이미지 (WADO-RS Rendered) 첫 사이클 깨짐 가능성 있음
+      currentRenderingMode = getInitialRenderingMode()
+      const useCPU = currentRenderingMode === 'cpu'
+
+      if (DEBUG_INIT) console.log(`[Cornerstone] Step 1: Initializing core with ${currentRenderingMode.toUpperCase()} rendering...`)
+      cornerstone.setUseCPURendering(useCPU)
       await cornerstone.init()
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1: Core initialized (CPU rendering)')
+      if (DEBUG_INIT) console.log(`[Cornerstone] Step 1: Core initialized (${currentRenderingMode.toUpperCase()} rendering)`)
 
       // 1-0. Cornerstone 성능 최적화 설정
       // 배치 프리페처 비활성화 후 Cornerstone Pool Manager가 직접 동시성 제어
@@ -76,10 +128,10 @@ export async function initCornerstone(): Promise<void> {
       //   Interaction: 사용자 상호작용 (우선순위 높음)
       //   Prefetch: 백그라운드 프리로드
       // - imageLoadPoolManager: 디코딩 작업 관리 (Web Worker)
-      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Interaction, 6)
-      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, 10)
-      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Interaction, cpuCores)
-      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, cpuCores * 2)
+      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Interaction, 8)   // 6→8 증가
+      imageRetrievalPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, 16)     // 10→16 증가
+      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Interaction, Math.min(cpuCores, 8))
+      imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, cpuCores)    // 2N→N (CPU 부하 감소)
 
       // Cornerstone 내부 캐시 크기 설정 (2GB)
       // OHIF 방식: 단일 캐시 계층으로 단순화
@@ -90,12 +142,12 @@ export async function initCornerstone(): Promise<void> {
       if (DEBUG_INIT) console.log(`[Cornerstone] Step 1-0: Performance configured (retrieval: 6/10, decode: ${cpuCores}/${cpuCores * 2}, cache: 2GB)`)
 
       // 1-1. WADO-RS Fetch Interceptors
-      // OHIF 방식: BulkData 인터셉터(L2 캐시) 제거, Cornerstone 내장 캐시만 사용
-      // Rendered 인터셉터만 유지 (Pre-rendered 모드용)
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Rendered Interceptor...')
-      // enableWadoRsFetchInterceptor()  // L2 캐시 비활성화 - OHIF 방식으로 단순화
-      enableRenderedInterceptor()        // Rendered (PNG) 인터셉터만 유지
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: WADO-RS Rendered Interceptor enabled')
+      // L2 캐시 재활성화: 프리페치된 PixelData를 캐시하여 재사용
+      // Rendered 인터셉터도 유지 (Pre-rendered 모드용)
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Fetch Interceptors...')
+      enableWadoRsFetchInterceptor()     // L2 캐시 활성화 (BulkData용)
+      enableRenderedInterceptor()        // Rendered (PNG) 인터셉터 유지
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: WADO-RS Fetch Interceptors enabled (BulkData + Rendered)')
 
       // 2. DICOM Image Loader 초기화 (v4 API)
       if (DEBUG_INIT) console.log('[Cornerstone] Step 2: Initializing DICOM image loader...')
@@ -166,6 +218,68 @@ export async function initCornerstone(): Promise<void> {
  */
 export function isInitialized(): boolean {
   return initialized
+}
+
+/**
+ * Cornerstone 재초기화 (렌더링 모드 전환용)
+ *
+ * 주의: 이 함수 호출 전에 모든 RenderingEngine을 파괴해야 합니다.
+ * 호출자가 다음 순서를 따라야 합니다:
+ * 1. 모든 재생 중지
+ * 2. 모든 RenderingEngine 파괴
+ * 3. reinitializeCornerstone() 호출
+ * 4. 새 RenderingEngine 생성
+ *
+ * @param useCPU CPU 렌더링 사용 여부
+ * @returns 재초기화 성공 여부
+ */
+export async function reinitializeCornerstone(useCPU: boolean): Promise<boolean> {
+  const newMode: RenderingMode = useCPU ? 'cpu' : 'gpu'
+
+  // 같은 모드면 스킵
+  if (currentRenderingMode === newMode && initialized) {
+    if (DEBUG_INIT) console.log(`[Cornerstone] Already using ${newMode.toUpperCase()} rendering`)
+    return true
+  }
+
+  // GPU 모드 요청 시 지원 여부 체크
+  if (!useCPU && !checkGpuSupport()) {
+    console.warn('[Cornerstone] GPU rendering not supported on this device')
+    return false
+  }
+
+  console.log(`[Cornerstone] Reinitializing with ${newMode.toUpperCase()} rendering...`)
+
+  try {
+    // 1. 현재 렌더링 모드 업데이트
+    currentRenderingMode = newMode
+
+    // 2. sessionStorage에 저장
+    try {
+      sessionStorage.setItem(RENDERING_MODE_STORAGE_KEY, newMode)
+    } catch {
+      // sessionStorage 접근 실패는 무시
+    }
+
+    // 3. Cornerstone 렌더링 모드 설정
+    // Note: setUseCPURendering은 init() 전에 호출해야 효과가 있음
+    // 이미 init()된 상태에서는 RenderingEngine을 새로 생성해야 새 모드가 적용됨
+    cornerstone.setUseCPURendering(useCPU)
+
+    // 4. 초기화 상태는 유지 (image loader, tools 등은 재사용 가능)
+    // RenderingEngine만 새로 생성하면 새 렌더링 모드가 적용됨
+
+    console.log(`[Cornerstone] Rendering mode changed to ${newMode.toUpperCase()}`)
+    console.log('[Cornerstone] Note: RenderingEngine must be recreated for changes to take effect')
+
+    return true
+  } catch (error) {
+    console.error('[Cornerstone] Reinitialization failed:', error)
+    // 실패 시 CPU 모드로 폴백
+    currentRenderingMode = 'cpu'
+    cornerstone.setUseCPURendering(true)
+    return false
+  }
 }
 
 /**

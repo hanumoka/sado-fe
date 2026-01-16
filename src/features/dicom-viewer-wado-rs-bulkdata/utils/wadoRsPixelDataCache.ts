@@ -22,11 +22,10 @@ import { LRUHeapCache } from '@/lib/utils/minHeap'
 // 디버그 로그 플래그
 const DEBUG_CACHE = false
 
-// 최대 캐시 크기 (100MB)
-// 메모리 최적화: 1GB → 100MB
-// 현재 enableWadoRsFetchInterceptor()가 비활성화되어 이 캐시는 사용되지 않음
-// OHIF 방식: Cornerstone 내장 캐시만 사용하므로 L2 캐시 최소화
-const MAX_CACHE_SIZE = 100 * 1024 * 1024
+// 최대 캐시 크기 (500MB)
+// 프리페치 효과 극대화를 위해 L2 캐시 크기 증가
+// 250 프레임 × 2MB = 500MB 지원
+const MAX_CACHE_SIZE = 500 * 1024 * 1024
 
 // LRU 캐시 (MinHeap 기반 - O(log N) eviction)
 const pixelDataCache = new LRUHeapCache<string, ArrayBuffer>({

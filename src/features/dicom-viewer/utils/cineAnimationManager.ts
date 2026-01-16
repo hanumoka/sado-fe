@@ -94,6 +94,29 @@ class CineAnimationManager extends BaseCineAnimationManager {
   }
 
   /**
+   * 어떤 슬롯이 버퍼링 중인지 확인 (global-sync 모드용)
+   * 모든 활성 슬롯의 다음 프레임이 로드되었는지 확인
+   */
+  protected override checkAnySlotBuffering(): boolean {
+    const store = useCornerstoneMultiViewerStore.getState()
+    const activeSlots = this.getActiveSlots()
+
+    for (const slotId of activeSlots) {
+      const info = this.viewports.get(slotId)
+      if (!info) continue
+
+      const nextIndex = (info.currentIndex + 1) % info.totalFrames
+      if (!store.isFrameLoaded(slotId, nextIndex)) {
+        if (this.debugEnabled) {
+          console.log(`${this.logPrefix} Global sync: slot ${slotId} buffering at frame ${nextIndex}`)
+        }
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
    * Progressive Playback: 다음 프레임 로드 여부 확인
    */
   protected override onFrameAdvance(slotId: number, currentIndex: number, totalFrames: number): FrameAdvanceResult {

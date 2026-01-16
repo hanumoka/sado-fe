@@ -10,7 +10,7 @@ import { useCornerstoneMultiViewerStore } from '../stores'
 import { getRenderedPrefetcherStats, type ResolutionStatsInfo } from '../utils/wadoRsRenderedPrefetcher'
 import { getRenderedCacheStats } from '../utils/wadoRsRenderedCache'
 import { formatBytes } from '@/lib/utils'
-import type { GridLayout, DataSourceType } from '../types/multiSlotViewer'
+import type { GridLayout, DataSourceType, SyncMode, RenderingMode } from '../types/multiSlotViewer'
 import { DATA_SOURCE_CONFIG } from '../types/multiSlotViewer'
 
 const LAYOUT_OPTIONS: { value: GridLayout; label: string }[] = [
@@ -39,6 +39,24 @@ const DATA_SOURCE_OPTIONS: { value: DataSourceType; label: string; description: 
 
 const FPS_OPTIONS = [5, 10, 15, 20, 25, 30, 60]
 
+const SYNC_MODE_OPTIONS: { value: SyncMode; label: string; description: string }[] = [
+  {
+    value: 'global-sync',
+    label: 'Global Sync',
+    description: '모든 슬롯이 동시에 재생/일시정지 (버퍼링 시 모든 슬롯 대기)',
+  },
+  {
+    value: 'independent',
+    label: 'Independent',
+    description: '각 슬롯이 독립적으로 재생 (버퍼링 없이 개별 속도)',
+  },
+  {
+    value: 'master-slave',
+    label: 'Master-Slave',
+    description: '마스터 슬롯에 맞춰 다른 슬롯 동기화',
+  },
+]
+
 const RESOLUTION_OPTIONS = [
   { value: 512, label: '512px (PNG)' },
   { value: 256, label: '256px (JPEG)' },
@@ -53,15 +71,24 @@ export function CornerstoneGlobalControls() {
     dataSourceType,
     globalFps,
     globalResolution,
+    syncMode,
+    renderingMode,
+    isRenderingModeChanging,
+    gpuSupported,
     slots,
     setLayout,
     setDataSourceType,
     setGlobalFps,
     setGlobalResolution,
+    setSyncMode,
+    setRenderingMode,
     playAll,
     pauseAll,
     clearAllSlots,
   } = useCornerstoneMultiViewerStore()
+
+  // GPU 모드 전환 경고 모달 상태
+  const [showGpuWarning, setShowGpuWarning] = useState(false)
 
   // Resolution별 크기 통계 상태
   const [showStats, setShowStats] = useState(false)
@@ -83,6 +110,25 @@ export function CornerstoneGlobalControls() {
     }
     setShowStats((prev) => !prev)
   }, [showStats, refreshStats])
+
+  // 렌더링 모드 변경 핸들러
+  const handleRenderingModeChange = useCallback((mode: RenderingMode) => {
+    if (mode === renderingMode || isRenderingModeChanging) return
+
+    // GPU 모드로 전환 시 경고 모달 표시
+    if (mode === 'gpu') {
+      setShowGpuWarning(true)
+    } else {
+      // CPU 모드로 전환은 바로 실행
+      setRenderingMode(mode)
+    }
+  }, [renderingMode, isRenderingModeChanging, setRenderingMode])
+
+  // GPU 전환 확인
+  const confirmGpuSwitch = useCallback(async () => {
+    setShowGpuWarning(false)
+    await setRenderingMode('gpu')
+  }, [setRenderingMode])
 
   // 현재 재생 중인 슬롯 수
   const playingCount = Object.values(slots).filter((s) => s.isPlaying).length
@@ -143,6 +189,57 @@ export function CornerstoneGlobalControls() {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Sync Mode 선택 */}
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400 text-sm">Sync:</span>
+          <select
+            value={syncMode}
+            onChange={(e) => setSyncMode(e.target.value as SyncMode)}
+            className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            title={SYNC_MODE_OPTIONS.find((opt) => opt.value === syncMode)?.description}
+          >
+            {SYNC_MODE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Rendering Mode 선택 (CPU/GPU) */}
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400 text-sm">Render:</span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => handleRenderingModeChange('cpu')}
+              disabled={isRenderingModeChanging}
+              className={`px-2 py-1 text-sm rounded transition-colors ${
+                renderingMode === 'cpu'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } ${isRenderingModeChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title="CPU 렌더링 (안정적, 높은 CPU 사용)"
+            >
+              CPU
+            </button>
+            <button
+              onClick={() => handleRenderingModeChange('gpu')}
+              disabled={isRenderingModeChanging || !gpuSupported}
+              className={`px-2 py-1 text-sm rounded transition-colors ${
+                renderingMode === 'gpu'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } ${isRenderingModeChanging || !gpuSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={gpuSupported ? 'GPU 렌더링 (빠름, RGBA 첫 사이클 깨짐 가능)' : 'GPU 렌더링 미지원 (WebGL2 필요)'}
+            >
+              GPU{!gpuSupported && ' (N/A)'}
+            </button>
+          </div>
+          {isRenderingModeChanging && (
+            <span className="text-xs text-yellow-400 animate-pulse">전환 중...</span>
+          )}
         </div>
 
         {/* Resolution 선택 (Pre-rendered일 때만 표시) */}
@@ -214,13 +311,17 @@ export function CornerstoneGlobalControls() {
         </div>
       </div>
 
-      {/* Data Source 설명 및 통계 토글 */}
+      {/* Data Source 설명 및 Sync Mode 설명 */}
       <div className="mt-2 flex items-center gap-4">
         <div className="text-xs text-gray-500">
+          <span className="text-gray-400">[Source]</span>{' '}
           {DATA_SOURCE_OPTIONS.find((opt) => opt.value === dataSourceType)?.description}
           {!DATA_SOURCE_CONFIG[dataSourceType].supportsWindowLevel && (
             <span className="ml-2 text-yellow-500">(W/L 조절 불가)</span>
           )}
+          <span className="mx-2">|</span>
+          <span className="text-gray-400">[Sync]</span>{' '}
+          {SYNC_MODE_OPTIONS.find((opt) => opt.value === syncMode)?.description}
         </div>
         <button
           onClick={toggleStats}
@@ -302,6 +403,37 @@ export function CornerstoneGlobalControls() {
               })()}
             </div>
           )}
+        </div>
+      )}
+
+      {/* GPU 전환 경고 모달 */}
+      {showGpuWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md mx-4 border border-gray-600 shadow-xl">
+            <h3 className="text-lg font-semibold text-white mb-4">GPU 렌더링으로 전환</h3>
+            <div className="text-gray-300 text-sm space-y-3">
+              <p>
+                GPU 렌더링 시 RGBA 이미지(WADO-RS Rendered)의 첫 사이클에서 깨짐 현상이 발생할 수 있습니다.
+              </p>
+              <p>
+                이 작업은 현재 진행 중인 재생을 중단하고 뷰포트를 재설정합니다.
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowGpuWarning(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmGpuSwitch}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors"
+              >
+                GPU로 전환
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -71,22 +71,38 @@ function getSlotIds(layout: GridLayout): number[] {
 
 export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewerProps) {
   const renderingEngineRef = useRef<RenderingEngine | null>(null)
-  const { layout } = useCornerstoneMultiViewerStore()
+  const { layout, renderingMode } = useCornerstoneMultiViewerStore()
   const slotIds = getSlotIds(layout)
 
   // ==================== Cornerstone 초기화 및 RenderingEngine 생성 ====================
+  // renderingMode 변경 시 RenderingEngine을 재생성하여 새 모드 적용
 
   useEffect(() => {
     let mounted = true
 
     const init = async () => {
       try {
-        // Cornerstone Core + Tools 초기화
+        // 기존 RenderingEngine이 있으면 파괴 (renderingMode 변경 시)
+        if (renderingEngineRef.current) {
+          renderingEngineRef.current.destroy()
+          renderingEngineRef.current = null
+          if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] Previous RenderingEngine destroyed for mode change')
+        }
+
+        // 기존 ToolGroup 파괴
+        try {
+          cornerstoneTools.ToolGroupManager.destroyToolGroup(TOOL_GROUP_ID)
+        } catch {
+          // 이미 제거된 경우 무시
+        }
+
+        // Cornerstone Core + Tools 초기화 (renderingMode에 맞는 설정 적용)
         await initCornerstone()
 
-        if (mounted && !renderingEngineRef.current) {
+        if (mounted) {
+          // 새 RenderingEngine 생성 (현재 렌더링 모드로)
           renderingEngineRef.current = new RenderingEngine(RENDERING_ENGINE_ID)
-          if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] RenderingEngine created')
+          if (DEBUG_VIEWER) console.log(`[CornerstoneMultiViewer] RenderingEngine created (${renderingMode} mode)`)
 
           // ToolGroup 생성 및 도구 활성화
           let toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(TOOL_GROUP_ID)
@@ -101,7 +117,7 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
               toolGroup.addTool(cornerstoneTools.WindowLevelTool.toolName)
               toolGroup.addTool(cornerstoneTools.PanTool.toolName)
               toolGroup.addTool(cornerstoneTools.ZoomTool.toolName)
-            } catch (e) {
+            } catch {
               // 이미 추가된 경우 무시
             }
 
@@ -127,17 +143,24 @@ export function CornerstoneMultiViewer({ className = '' }: CornerstoneMultiViewe
 
     return () => {
       mounted = false
+      // cleanup은 컴포넌트 언마운트 시에만 실행 (renderingMode 변경 시에는 init()에서 처리)
+    }
+  }, [renderingMode]) // renderingMode 변경 시 RenderingEngine 재생성
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
       // ToolGroup 제거
       try {
         cornerstoneTools.ToolGroupManager.destroyToolGroup(TOOL_GROUP_ID)
-        if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] ToolGroup destroyed')
-      } catch (e) {
+        if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] ToolGroup destroyed on unmount')
+      } catch {
         // 이미 제거된 경우 무시
       }
       if (renderingEngineRef.current) {
         renderingEngineRef.current.destroy()
         renderingEngineRef.current = null
-        if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] RenderingEngine destroyed')
+        if (DEBUG_VIEWER) console.log('[CornerstoneMultiViewer] RenderingEngine destroyed on unmount')
       }
     }
   }, [])

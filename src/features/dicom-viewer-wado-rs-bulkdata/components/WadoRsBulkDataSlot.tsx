@@ -89,6 +89,7 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   const globalFormat = useWadoRsBulkDataMultiViewerStore((state) => state.globalFormat)
   const globalResolution = useWadoRsBulkDataMultiViewerStore((state) => state.globalResolution)
   const allThumbnailsLoaded = useWadoRsBulkDataMultiViewerStore((state) => state.allThumbnailsLoaded)
+  const syncMode = useWadoRsBulkDataMultiViewerStore((state) => state.syncMode)
   const assignInstanceToSlot = useWadoRsBulkDataMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useWadoRsBulkDataMultiViewerStore((state) => state.preloadSlotFrames)
   const setSlotMetadataError = useWadoRsBulkDataMultiViewerStore((state) => state.setSlotMetadataError)
@@ -353,21 +354,31 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, globalFormat, globalResolution])  // stackVersion: 캐시 클리어 시 Stack 재설정, globalFormat/globalResolution: 포맷/해상도 변경 시 재설정
 
   // ==================== 자동 프리로드 ====================
+  // Global Sync 모드에서는 자동 프리로드 비활성화
+  // → playAll()에서 모든 슬롯을 동시에 프리로드하여 동시 재생 시작 보장
+  // Independent/Master-Slave 모드에서는 기존대로 자동 프리로드
 
   useEffect(() => {
     if (!instance || isPreloaded || isPreloading) return
     if (instance.numberOfFrames <= 1) return
 
-    // 썸네일 로딩 완료 대기 (썸네일 우선 전략)
-    if (!allThumbnailsLoaded) {
-      if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Waiting for thumbnails before preload`)
+    // Global Sync 모드: 자동 프리로드 비활성화 (playAll()에서 통제)
+    // 이를 통해 모든 슬롯이 동일한 상태에서 시작하여 동시 재생 보장
+    if (syncMode === 'global-sync') {
+      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Global Sync mode - skipping auto-preload (will be handled by playAll)`)
       return
     }
 
-    // 인스턴스 할당 후 자동 프리로드
-    if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Starting preload (thumbnails loaded)`)
+    // 썸네일 로딩 완료 대기 (썸네일 우선 전략)
+    if (!allThumbnailsLoaded) {
+      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Waiting for thumbnails before preload`)
+      return
+    }
+
+    // 인스턴스 할당 후 자동 프리로드 (Independent/Master-Slave 모드)
+    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Starting preload (thumbnails loaded)`)
     preloadSlotFrames(slotId)
-  }, [instance?.sopInstanceUid, isPreloaded, isPreloading, allThumbnailsLoaded, slotId, preloadSlotFrames])
+  }, [instance?.sopInstanceUid, isPreloaded, isPreloading, allThumbnailsLoaded, slotId, preloadSlotFrames, syncMode])
 
   // ==================== 프레임 변경 시 뷰포트 업데이트 ====================
 

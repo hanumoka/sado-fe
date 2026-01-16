@@ -18,6 +18,16 @@ class WadoUriCineAnimationManager extends BaseCineAnimationManager {
   }
 
   /**
+   * 어떤 슬롯이 버퍼링 중인지 확인 (global-sync 모드용)
+   * WADO-URI는 프레임 단위 로딩 추적이 없으므로 항상 false 반환
+   */
+  protected override checkAnySlotBuffering(): boolean {
+    // WADO-URI는 개별 프레임 로딩 추적이 없음
+    // 항상 false 반환하여 글로벌 동기화 모드에서도 정상 재생
+    return false
+  }
+
+  /**
    * 슬롯 등록 해제 시 Zustand store에 프레임 인덱스 동기화
    */
   protected override onSlotUnregister(slotId: number, frameIndex: number): void {

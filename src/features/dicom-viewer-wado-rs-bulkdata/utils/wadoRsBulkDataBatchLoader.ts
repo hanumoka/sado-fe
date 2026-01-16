@@ -357,7 +357,7 @@ export async function loadAndCacheFrameBatch(
     return 0
   }
 
-  const preferCompressed = options?.preferCompressed ?? false
+  const preferCompressed = options?.preferCompressed ?? true  // 기본값: 압축 사용 (대역폭 절약)
 
   if (DEBUG_BATCH_LOADER) {
     console.log(

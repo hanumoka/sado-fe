@@ -53,6 +53,7 @@ export default function WadoRsViewerPage() {
   const {
     layout: storeLayout,
     globalFps,
+    renderingMode,
     setGlobalFps,
     setLayout: setStoreLayout,
     assignInstanceToSlot,
@@ -104,28 +105,46 @@ export default function WadoRsViewerPage() {
   })
 
   // ==================== Cornerstone 및 ToolGroup 초기화 ====================
+  // renderingMode 변경 시 RenderingEngine을 재생성하여 새 모드 적용
   useEffect(() => {
     const init = async () => {
       try {
-        if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Starting initialization...')
-        await initCornerstone()
+        if (DEBUG_PAGE) console.log(`[WadoRsViewerPage] Starting initialization (${renderingMode} mode)...`)
 
+        // 기존 RenderingEngine이 있으면 파괴 (renderingMode 변경 시)
         if (renderingEngineRef.current) {
-          setIsInitialized(true)
-          return
+          renderingEngineRef.current.destroy()
+          renderingEngineRef.current = null
+          if (DEBUG_PAGE) console.log('[WadoRsViewerPage] Previous RenderingEngine destroyed for mode change')
         }
 
+        // 기존 ToolGroup 파괴
+        try {
+          cornerstoneTools.ToolGroupManager.destroyToolGroup(WADO_RS_BULKDATA_TOOL_GROUP_ID)
+        } catch {
+          // 이미 제거된 경우 무시
+        }
+
+        // Cornerstone Core + Tools 초기화 (renderingMode에 맞는 설정 적용)
+        await initCornerstone()
+
+        // 새 RenderingEngine 생성 (현재 렌더링 모드로)
         renderingEngineRef.current = new RenderingEngine(WADO_RS_BULKDATA_RENDERING_ENGINE_ID)
+        if (DEBUG_PAGE) console.log(`[WadoRsViewerPage] RenderingEngine created (${renderingMode} mode)`)
 
         // WADO-RS BulkData 전용 ToolGroup 생성
         let toolGroup = cornerstoneTools.ToolGroupManager.getToolGroup(WADO_RS_BULKDATA_TOOL_GROUP_ID)
         if (!toolGroup) {
           toolGroup = cornerstoneTools.ToolGroupManager.createToolGroup(WADO_RS_BULKDATA_TOOL_GROUP_ID)
           if (toolGroup) {
-            toolGroup.addTool(cornerstoneTools.WindowLevelTool.toolName)
-            toolGroup.addTool(cornerstoneTools.PanTool.toolName)
-            toolGroup.addTool(cornerstoneTools.ZoomTool.toolName)
-            toolGroup.addTool(cornerstoneTools.StackScrollTool.toolName)
+            try {
+              toolGroup.addTool(cornerstoneTools.WindowLevelTool.toolName)
+              toolGroup.addTool(cornerstoneTools.PanTool.toolName)
+              toolGroup.addTool(cornerstoneTools.ZoomTool.toolName)
+              toolGroup.addTool(cornerstoneTools.StackScrollTool.toolName)
+            } catch {
+              // 이미 추가된 경우 무시
+            }
 
             toolGroup.setToolActive(cornerstoneTools.WindowLevelTool.toolName, {
               bindings: [{ mouseButton: cornerstoneTools.Enums.MouseBindings.Primary }],
@@ -149,7 +168,7 @@ export default function WadoRsViewerPage() {
       }
     }
     init()
-  }, [])
+  }, [renderingMode]) // renderingMode 변경 시 RenderingEngine 재생성
 
   // 클린업
   useEffect(() => {

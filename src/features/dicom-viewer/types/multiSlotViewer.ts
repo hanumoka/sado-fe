@@ -108,12 +108,22 @@ export interface CornerstoneSlotState {
   // Stack 재로드 트리거
   /** Stack 버전 (캐시 클리어 시 증가하여 Stack 재설정 트리거) */
   stackVersion: number
+
+  // GPU 텍스처 웜업
+  /** GPU 텍스처 웜업 중 여부 */
+  isWarmingUp: boolean
 }
 
 // ==================== Store 상태 ====================
 
 /** 해상도 모드 (auto: 레이아웃별 자동, manual: 수동 선택) */
 export type ResolutionMode = 'auto' | 'manual'
+
+/** 동기화 모드 (다중 뷰포트 재생 시) */
+export type SyncMode = 'independent' | 'global-sync' | 'master-slave'
+
+/** 렌더링 모드 (CPU/GPU 선택) */
+export type RenderingMode = 'cpu' | 'gpu'
 
 /** Cornerstone Multi Viewer 전체 상태 */
 export interface CornerstoneMultiViewerState {
@@ -139,6 +149,22 @@ export interface CornerstoneMultiViewerState {
   totalThumbnailCount: number
   /** 모든 썸네일 로딩 완료 여부 */
   allThumbnailsLoaded: boolean
+
+  // 동기화 설정
+  /** 동기화 모드 (independent: 독립, global-sync: 전역 동기화, master-slave: 마스터-슬레이브) */
+  syncMode: SyncMode
+  /** 마스터 슬롯 ID (master-slave 모드용) */
+  masterSlotId: number | null
+  /** 전역 버퍼링 상태 (global-sync 모드에서 어느 슬롯이 버퍼링 중인지) */
+  globalBuffering: boolean
+
+  // 렌더링 모드 설정
+  /** 렌더링 모드 (cpu: CPU 렌더링, gpu: GPU 렌더링) */
+  renderingMode: RenderingMode
+  /** 렌더링 모드 전환 중 여부 */
+  isRenderingModeChanging: boolean
+  /** GPU 렌더링 지원 여부 (WebGL2) */
+  gpuSupported: boolean
 }
 
 // ==================== 드래그 앤 드롭 ====================

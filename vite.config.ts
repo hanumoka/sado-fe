@@ -12,8 +12,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   // 백엔드 API 서버 URL (환경 변수로 설정 가능)
-  // .env 파일에서 VITE_API_TARGET=http://192.168.1.100:10201 형태로 설정
-  const apiTarget = env.VITE_API_TARGET || 'http://localhost:10201'
+  // 기본값: Nginx 캐시 프록시 (10202) - 캐싱으로 성능 향상
+  // 직접 연결: VITE_API_TARGET=http://localhost:10201
+  // 원격 서버: VITE_API_TARGET=http://192.168.1.100:10201
+  const apiTarget = env.VITE_API_TARGET || 'http://localhost:10202'
 
   return {
     plugins: [react(), viteCommonjs()],

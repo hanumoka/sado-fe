@@ -19,6 +19,32 @@ class WadoRsBulkDataCineAnimationManager extends BaseCineAnimationManager {
   }
 
   /**
+   * 어떤 슬롯이 버퍼링 중인지 확인 (global-sync 모드용)
+   * 모든 활성 슬롯의 다음 프레임이 로드되었는지 확인
+   */
+  protected override checkAnySlotBuffering(): boolean {
+    const store = useWadoRsBulkDataMultiViewerStore.getState()
+    const activeSlots = this.getActiveSlots()
+
+    for (const slotId of activeSlots) {
+      const info = this.viewports.get(slotId)
+      if (!info) continue
+
+      const slot = store.slots[slotId]
+      if (!slot) continue
+
+      const nextIndex = (info.currentIndex + 1) % info.totalFrames
+      if (!slot.loadedFrames.has(nextIndex)) {
+        if (this.debugEnabled) {
+          console.log(`${this.logPrefix} Global sync: slot ${slotId} buffering at frame ${nextIndex}`)
+        }
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
    * 프레임 전진 전 버퍼링 체크 (Progressive Playback)
    *
    * 다음 프레임이 로드되지 않았으면 shouldAdvance=false 반환하여

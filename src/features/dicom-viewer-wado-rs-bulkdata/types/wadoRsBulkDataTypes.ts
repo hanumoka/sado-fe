@@ -14,6 +14,9 @@
  */
 export type WadoRsBulkDataGridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
 
+/** 렌더링 모드 (CPU/GPU 선택) */
+export type WadoRsBulkDataRenderingMode = 'cpu' | 'gpu'
+
 // ==================== Instance 정보 ====================
 
 /** Instance 요약 정보 (WADO-RS BulkData 멀티 슬롯 뷰어용) */
@@ -156,6 +159,18 @@ export interface WadoRsBulkDataMultiViewerState {
   preloadPerformance: WadoRsBulkDataPreloadPerformance | null
   /** 리로딩 중 여부 */
   isReloading: boolean
+
+  // 렌더링 모드 설정
+  /** 렌더링 모드 (cpu: CPU 렌더링, gpu: GPU 렌더링) */
+  renderingMode: WadoRsBulkDataRenderingMode
+  /** 렌더링 모드 전환 중 여부 */
+  isRenderingModeChanging: boolean
+  /** GPU 렌더링 지원 여부 (WebGL2) */
+  gpuSupported: boolean
+
+  // 동기화 설정
+  /** 동기화 모드 (independent, global-sync, master-slave) */
+  syncMode: 'independent' | 'global-sync' | 'master-slave'
 }
 
 // ==================== 드래그 앤 드롭 ====================

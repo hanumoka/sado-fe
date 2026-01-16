@@ -15,17 +15,25 @@ import type {
   ApiType,
   DataSourceType,
   ResolutionMode,
+  SyncMode,
+  RenderingMode,
   InstanceSummary,
   CornerstoneSlotState,
   CornerstoneMultiViewerState,
   SlotPerformanceStats,
 } from '../types/multiSlotViewer'
+import {
+  getRenderingMode,
+  checkGpuSupport,
+  reinitializeCornerstone,
+} from '@/lib/cornerstone/initCornerstone'
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { imageLoader } from '@cornerstonejs/core'
 import { createWadoRsRenderedImageId } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { prefetchAllRenderedFrames } from '../utils/wadoRsRenderedPrefetcher'
 import { clearRenderedCache } from '../utils/wadoRsRenderedCache'
+import { cineAnimationManager } from '../utils/cineAnimationManager'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_STORE = true
@@ -65,6 +73,8 @@ function createEmptySlotState(): CornerstoneSlotState {
     isBuffering: false,
     // Stack 재로드 트리거
     stackVersion: 0,
+    // GPU 텍스처 웜업
+    isWarmingUp: false,
   }
 }
 
@@ -195,6 +205,18 @@ interface CornerstoneMultiViewerActions {
   setTotalThumbnailCount: (count: number) => void
   markThumbnailLoaded: (sopInstanceUid: string) => void
   resetThumbnailTracking: () => void
+
+  // 동기화 설정
+  setSyncMode: (mode: SyncMode) => void
+  setMasterSlot: (slotId: number | null) => void
+  setGlobalBuffering: (isBuffering: boolean) => void
+
+  // 조정된 버퍼 대기
+  waitForAllSlotsBuffer: (slotIds: number[], requiredFrames: number, timeout?: number) => Promise<void>
+
+  // 렌더링 모드 설정
+  setRenderingMode: (mode: RenderingMode) => Promise<boolean>
+  refreshGpuSupport: () => boolean
 }
 
 type CornerstoneMultiViewerStore = CornerstoneMultiViewerState & CornerstoneMultiViewerActions
@@ -312,6 +334,16 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
   thumbnailsLoaded: new Set<string>(),
   totalThumbnailCount: 0,
   allThumbnailsLoaded: false,
+
+  // 동기화 설정
+  syncMode: 'global-sync' as SyncMode, // 기본값: 전역 동기화
+  masterSlotId: null as number | null,
+  globalBuffering: false,
+
+  // 렌더링 모드 설정
+  renderingMode: getRenderingMode() as RenderingMode, // sessionStorage에서 복원
+  isRenderingModeChanging: false,
+  gpuSupported: checkGpuSupport(),
 
   // ==================== 레이아웃 관리 ====================
 
@@ -701,6 +733,23 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       get().preloadSlotFrames(slotId).catch((error) => {
         console.warn(`[MultiViewer] Background preload failed for slot ${slotId}:`, error)
       })
+    }
+
+    // 1.5. GPU 텍스처 웜업 (첫 재생 사이클 이미지 깨짐 방지)
+    if (cineAnimationManager.hasViewport(slotId)) {
+      set((state) => ({
+        slots: {
+          ...state.slots,
+          [slotId]: { ...state.slots[slotId], isWarmingUp: true },
+        },
+      }))
+      await cineAnimationManager.warmupGpuTextures(slotId)
+      set((state) => ({
+        slots: {
+          ...state.slots,
+          [slotId]: { ...state.slots[slotId], isWarmingUp: false },
+        },
+      }))
     }
 
     // 2. 초기 버퍼만 대기 (전체 대기 X)
@@ -1403,6 +1452,159 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
       allThumbnailsLoaded: false,
     })
   },
+
+  // ==================== 동기화 설정 ====================
+
+  setSyncMode: (mode) => {
+    set({ syncMode: mode })
+    // CineAnimationManager에도 동기화 모드 전달
+    cineAnimationManager.setSyncMode(mode)
+    if (DEBUG_STORE) {
+      console.log(`[MultiViewer] Sync mode set to: ${mode}`)
+    }
+  },
+
+  setMasterSlot: (slotId) => {
+    set({ masterSlotId: slotId })
+    cineAnimationManager.setMasterSlot(slotId)
+    if (DEBUG_STORE) {
+      console.log(`[MultiViewer] Master slot set to: ${slotId}`)
+    }
+  },
+
+  setGlobalBuffering: (isBuffering) => {
+    set({ globalBuffering: isBuffering })
+  },
+
+  waitForAllSlotsBuffer: async (slotIds, requiredFrames, timeout = 15000) => {
+    const startTime = Date.now()
+
+    return new Promise<void>((resolve) => {
+      const checkAllBuffers = () => {
+        const allReady = slotIds.every((slotId) => {
+          const slot = get().slots[slotId]
+          if (!slot?.instance) return true // 빈 슬롯은 준비 완료로 간주
+
+          const numberOfFrames = slot.instance.numberOfFrames
+          const bufferCheckRange = Math.min(requiredFrames, numberOfFrames)
+
+          // 조건 1: 프레임 0이 로드되어야 함
+          const hasFrame0 = slot.loadedFrames.has(0)
+
+          // 조건 2: 충분한 프레임이 로드되어야 함
+          let loadedInRange = 0
+          for (let i = 0; i < bufferCheckRange; i++) {
+            if (slot.loadedFrames.has(i)) loadedInRange++
+          }
+
+          return (hasFrame0 && loadedInRange >= requiredFrames) || slot.isPreloaded
+        })
+
+        if (allReady) {
+          if (DEBUG_STORE) {
+            console.log(`[MultiViewer] All slots buffer ready, starting synchronized playback`)
+          }
+          resolve()
+          return
+        }
+
+        if (Date.now() - startTime > timeout) {
+          console.warn(`[MultiViewer] Coordinated buffer timeout, starting anyway`)
+          resolve()
+          return
+        }
+
+        setTimeout(checkAllBuffers, 50)
+      }
+
+      checkAllBuffers()
+    })
+  },
+
+  // ==================== 렌더링 모드 설정 ====================
+
+  /**
+   * 렌더링 모드 전환 (CPU/GPU)
+   *
+   * 중요: 이 작업은 RenderingEngine 재생성이 필요하므로
+   * 1-2초의 지연이 발생하고 진행 중인 재생이 중단됩니다.
+   *
+   * @param mode 렌더링 모드 ('cpu' | 'gpu')
+   * @returns 전환 성공 여부
+   */
+  setRenderingMode: async (mode: RenderingMode): Promise<boolean> => {
+    const currentMode = get().renderingMode
+    if (currentMode === mode) return true
+
+    // GPU 요청 시 지원 여부 체크
+    if (mode === 'gpu' && !get().gpuSupported) {
+      console.warn('[MultiViewer] GPU rendering not supported on this device')
+      return false
+    }
+
+    if (DEBUG_STORE) {
+      console.log(`[MultiViewer] Changing rendering mode: ${currentMode} → ${mode}`)
+    }
+
+    // 1. 모드 전환 시작 (로딩 상태)
+    set({ isRenderingModeChanging: true })
+
+    // 2. 모든 재생 중지
+    get().pauseAll()
+
+    try {
+      // 3. Cornerstone 재초기화
+      const success = await reinitializeCornerstone(mode === 'cpu')
+
+      if (success) {
+        // 4. 모든 슬롯 리셋 (RenderingEngine 재생성 트리거)
+        const slots = get().slots
+        const resetSlots: Record<number, CornerstoneSlotState> = {}
+        for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+          if (slots[i]) {
+            resetSlots[i] = {
+              ...slots[i],
+              isPreloading: false,
+              isPreloaded: false,
+              preloadProgress: 0,
+              currentFrame: 0,
+              loadedFrames: new Set<number>(),
+              isBuffering: false,
+              isPlaying: false,
+              stackVersion: (slots[i].stackVersion ?? 0) + 1,
+            }
+          }
+        }
+
+        set({
+          renderingMode: mode,
+          isRenderingModeChanging: false,
+          slots: resetSlots,
+        })
+
+        if (DEBUG_STORE) {
+          console.log(`[MultiViewer] Rendering mode changed to ${mode.toUpperCase()}`)
+        }
+        return true
+      } else {
+        set({ isRenderingModeChanging: false })
+        return false
+      }
+    } catch (error) {
+      console.error('[MultiViewer] Failed to change rendering mode:', error)
+      set({ isRenderingModeChanging: false })
+      return false
+    }
+  },
+
+  /**
+   * GPU 지원 여부 새로고침
+   */
+  refreshGpuSupport: () => {
+    const supported = checkGpuSupport()
+    set({ gpuSupported: supported })
+    return supported
+  },
     }),
     {
       name: 'cornerstone-viewer-settings',
@@ -1415,23 +1617,34 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
         globalFps: state.globalFps,
         globalResolution: state.globalResolution,
         resolutionMode: state.resolutionMode,
+        renderingMode: state.renderingMode,
+        syncMode: state.syncMode,
       }),
       // 상태 복원 시 저장된 값으로 덮어쓰기
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState as Partial<CornerstoneMultiViewerState>),
       }),
-      // 복원 완료 시 로그 (디버깅용)
+      // 복원 완료 시 CineAnimationManager에 동기화 모드 전달 및 로그
       onRehydrateStorage: () => (state) => {
-        if (DEBUG_STORE && state) {
-          console.log('[MultiViewer] Restored from session storage:', {
-            layout: state.layout,
-            apiType: state.apiType,
-            dataSourceType: state.dataSourceType,
-            globalFps: state.globalFps,
-            globalResolution: state.globalResolution,
-            resolutionMode: state.resolutionMode,
-          })
+        if (state) {
+          // CineAnimationManager에 동기화 모드 전달
+          if (state.syncMode) {
+            cineAnimationManager.setSyncMode(state.syncMode)
+          }
+
+          if (DEBUG_STORE) {
+            console.log('[MultiViewer] Restored from session storage:', {
+              layout: state.layout,
+              apiType: state.apiType,
+              dataSourceType: state.dataSourceType,
+              globalFps: state.globalFps,
+              globalResolution: state.globalResolution,
+              resolutionMode: state.resolutionMode,
+              renderingMode: state.renderingMode,
+              syncMode: state.syncMode,
+            })
+          }
         }
       },
     }

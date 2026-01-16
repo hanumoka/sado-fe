@@ -20,10 +20,17 @@
 
 import type { Types } from '@cornerstonejs/core'
 
+/** 동기화 모드 (다중 뷰포트 재생 시) */
+export type SyncMode = 'independent' | 'global-sync' | 'master-slave'
+
 export interface ViewportInfo {
   viewport: Types.IStackViewport
   totalFrames: number
   currentIndex: number
+  /** 프레임 드롭 카운트 */
+  frameDropCount: number
+  /** 마지막 드롭 시간 */
+  lastDropTime: number
 }
 
 export interface FrameAdvanceResult {
@@ -46,6 +53,15 @@ export abstract class BaseCineAnimationManager {
   protected debugEnabled: boolean = false
   protected logPrefix: string = '[CineManager]'
 
+  // 동기화 설정
+  protected syncMode: SyncMode = 'global-sync'
+  protected masterSlotId: number | null = null
+
+  // Global Sync 동기화 장벽 (Barrier Pattern)
+  // playAll()에서 설정하여 모든 슬롯이 등록될 때까지 대기
+  private expectedSlots: Set<number> = new Set()
+  private isWaitingForAllSlots: boolean = false
+
   /**
    * FPS 설정
    * @param fps 초당 프레임 수
@@ -62,6 +78,72 @@ export abstract class BaseCineAnimationManager {
   }
 
   /**
+   * 동기화 모드 설정
+   * @param mode 동기화 모드 (independent, global-sync, master-slave)
+   */
+  setSyncMode(mode: SyncMode): void {
+    this.syncMode = mode
+    if (this.debugEnabled) {
+      console.log(`${this.logPrefix} Sync mode set to: ${mode}`)
+    }
+  }
+
+  /**
+   * 현재 동기화 모드 반환
+   */
+  getSyncMode(): SyncMode {
+    return this.syncMode
+  }
+
+  /**
+   * 마스터 슬롯 설정 (master-slave 모드용)
+   * @param slotId 마스터 슬롯 ID
+   */
+  setMasterSlot(slotId: number | null): void {
+    this.masterSlotId = slotId
+    if (this.debugEnabled) {
+      console.log(`${this.logPrefix} Master slot set to: ${slotId}`)
+    }
+  }
+
+  /**
+   * Global Sync 준비 - isPlaying 설정 전에 호출
+   * 모든 예상 슬롯이 등록될 때까지 애니메이션 시작을 지연
+   *
+   * @param slotIds 재생할 슬롯 ID 배열
+   */
+  prepareForGlobalSync(slotIds: number[]): void {
+    this.expectedSlots = new Set(slotIds)
+    this.isWaitingForAllSlots = true
+    if (this.debugEnabled) {
+      console.log(`${this.logPrefix} Preparing Global Sync barrier for ${slotIds.length} slots:`, slotIds)
+    }
+  }
+
+  /**
+   * 모든 활성 슬롯을 프레임 0으로 리셋
+   * Global Sync 동시 시작 보장
+   */
+  private resetAllSlotsToFrameZero(): void {
+    this.activeSlots.forEach((slotId) => {
+      const info = this.viewports.get(slotId)
+      if (info) {
+        info.currentIndex = 0
+        try {
+          info.viewport.setImageIdIndex(0)
+        } catch (error) {
+          if (this.debugEnabled) {
+            console.error(`${this.logPrefix} Error resetting slot ${slotId} to frame 0:`, error)
+          }
+        }
+      }
+    })
+    if (this.debugEnabled) {
+      console.log(`${this.logPrefix} All ${this.activeSlots.size} slots reset to frame 0`)
+    }
+  }
+
+  /**
    * Viewport 등록 (Slot 컴포넌트에서 viewport 생성 후 호출)
    * @param slotId 슬롯 ID
    * @param viewport Cornerstone StackViewport
@@ -72,6 +154,8 @@ export abstract class BaseCineAnimationManager {
       viewport,
       totalFrames,
       currentIndex: 0,
+      frameDropCount: 0,
+      lastDropTime: 0,
     })
     if (this.debugEnabled) {
       console.log(`${this.logPrefix} Viewport registered for slot ${slotId}, totalFrames: ${totalFrames}`)
@@ -137,6 +221,14 @@ export abstract class BaseCineAnimationManager {
   protected abstract onSlotUnregister(slotId: number, frameIndex: number): void
 
   /**
+   * 어떤 슬롯이 버퍼링 중인지 확인 (global-sync 모드용)
+   * 서브클래스에서 구현 필요
+   *
+   * @returns 버퍼링 중인 슬롯이 있으면 true
+   */
+  protected abstract checkAnySlotBuffering(): boolean
+
+  /**
    * 중앙 애니메이션 루프
    * Zustand 상태 업데이트 없이 Viewport 직접 조작
    */
@@ -152,7 +244,103 @@ export abstract class BaseCineAnimationManager {
       // 드리프트 보정: 초과된 시간을 다음 프레임에 반영
       this.lastFrameTime = currentTime - (elapsed % this.frameTime)
 
-      // Viewport 직접 업데이트 (React 우회)
+      // Global Sync 모드: 모든 슬롯이 동일한 프레임 인덱스로 동기화
+      if (this.syncMode === 'global-sync' && this.activeSlots.size > 1) {
+        // 어떤 슬롯이 버퍼링 중이면 모든 슬롯 대기
+        const anyBuffering = this.checkAnySlotBuffering()
+        if (anyBuffering) {
+          // 모든 슬롯 대기 - 프레임 전진 없이 다음 RAF 예약
+          this.animationId = requestAnimationFrame(this.animate)
+          return
+        }
+
+        // 버퍼링 없음 - 리더 슬롯 기준으로 모든 슬롯 동기화
+        // 결정적 리더 선택: 최소 슬롯 ID를 리더로 사용 (항상 동일한 슬롯이 리더)
+        const leaderSlotId = Math.min(...Array.from(this.activeSlots))
+        const leaderInfo = this.viewports.get(leaderSlotId)
+
+        if (leaderInfo) {
+          const result = this.onFrameAdvance(leaderSlotId, leaderInfo.currentIndex, leaderInfo.totalFrames)
+          if (result.shouldAdvance) {
+            // 리더 프레임 업데이트
+            leaderInfo.currentIndex = result.nextIndex
+            try {
+              leaderInfo.viewport.setImageIdIndex(result.nextIndex)
+              leaderInfo.viewport.render()
+            } catch (error) {
+              if (this.debugEnabled) {
+                console.error(`${this.logPrefix} Error updating leader viewport:`, error)
+              }
+            }
+
+            // 나머지 슬롯들을 리더와 동일한 프레임 인덱스로 동기화
+            this.activeSlots.forEach((slotId) => {
+              if (slotId === leaderSlotId) return
+              const slotInfo = this.viewports.get(slotId)
+              if (slotInfo) {
+                // 리더의 프레임 인덱스를 슬롯의 totalFrames에 맞게 조정
+                const targetFrame = result.nextIndex % slotInfo.totalFrames
+                slotInfo.currentIndex = targetFrame
+                try {
+                  slotInfo.viewport.setImageIdIndex(targetFrame)
+                  slotInfo.viewport.render()
+                } catch (error) {
+                  if (this.debugEnabled) {
+                    console.error(`${this.logPrefix} Error updating synced viewport ${slotId}:`, error)
+                  }
+                }
+              }
+            })
+
+            if (this.debugEnabled) {
+              console.log(`${this.logPrefix} Global-Sync: all slots synced to frame ${result.nextIndex}`)
+            }
+          }
+        }
+        this.animationId = requestAnimationFrame(this.animate)
+        return
+      }
+
+      // Master-Slave 모드: 마스터만 전진하고 슬레이브는 따라감
+      if (this.syncMode === 'master-slave' && this.masterSlotId !== null) {
+        const masterInfo = this.viewports.get(this.masterSlotId)
+        if (masterInfo) {
+          const result = this.onFrameAdvance(this.masterSlotId, masterInfo.currentIndex, masterInfo.totalFrames)
+          if (result.shouldAdvance) {
+            masterInfo.currentIndex = result.nextIndex
+            try {
+              masterInfo.viewport.setImageIdIndex(result.nextIndex)
+              masterInfo.viewport.render()
+            } catch (error) {
+              if (this.debugEnabled) {
+                console.error(`${this.logPrefix} Error updating master viewport:`, error)
+              }
+            }
+
+            // 슬레이브 슬롯들 동기화
+            this.activeSlots.forEach((slotId) => {
+              if (slotId === this.masterSlotId) return
+              const slaveInfo = this.viewports.get(slotId)
+              if (slaveInfo) {
+                const slaveTargetFrame = result.nextIndex % slaveInfo.totalFrames
+                slaveInfo.currentIndex = slaveTargetFrame
+                try {
+                  slaveInfo.viewport.setImageIdIndex(slaveTargetFrame)
+                  slaveInfo.viewport.render()
+                } catch (error) {
+                  if (this.debugEnabled) {
+                    console.error(`${this.logPrefix} Error updating slave viewport ${slotId}:`, error)
+                  }
+                }
+              }
+            })
+          }
+        }
+        this.animationId = requestAnimationFrame(this.animate)
+        return
+      }
+
+      // Independent 모드: 각 슬롯이 독립적으로 프레임 전진
       this.activeSlots.forEach((slotId) => {
         const info = this.viewports.get(slotId)
         if (!info) {
@@ -217,12 +405,36 @@ export abstract class BaseCineAnimationManager {
 
   /**
    * 슬롯 등록 (재생 시작 시 호출)
+   * Global Sync 모드에서는 모든 예상 슬롯이 등록될 때까지 대기
    * @param slotId 슬롯 ID
    */
   registerSlot(slotId: number): void {
-    const wasEmpty = this.activeSlots.size === 0
     this.activeSlots.add(slotId)
-    if (wasEmpty) this.start()
+
+    // Global Sync 모드 + 동기화 장벽 활성화: 모든 예상 슬롯 등록 대기
+    if (this.syncMode === 'global-sync' && this.expectedSlots.size > 0) {
+      const allRegistered = Array.from(this.expectedSlots).every((id) => this.activeSlots.has(id))
+
+      if (allRegistered) {
+        // 모든 슬롯 등록 완료 - 동시 시작!
+        this.isWaitingForAllSlots = false
+        this.expectedSlots.clear()
+        this.resetAllSlotsToFrameZero() // 모든 슬롯 프레임 0으로
+        this.start()
+        if (this.debugEnabled) {
+          console.log(
+            `${this.logPrefix} All ${this.activeSlots.size} slots registered, starting synchronized playback at frame 0`
+          )
+        }
+      } else if (this.debugEnabled) {
+        const remaining = Array.from(this.expectedSlots).filter((id) => !this.activeSlots.has(id))
+        console.log(`${this.logPrefix} Slot ${slotId} registered, waiting for slots: [${remaining.join(', ')}]`)
+      }
+      return
+    }
+
+    // 비-Global-Sync 모드 또는 장벽 비활성화: 기존 동작 (첫 슬롯에서 시작)
+    if (this.activeSlots.size === 1) this.start()
     if (this.debugEnabled) {
       console.log(`${this.logPrefix} Slot ${slotId} registered, active: ${this.activeSlots.size}`)
     }
@@ -263,6 +475,14 @@ export abstract class BaseCineAnimationManager {
    */
   isRunning(): boolean {
     return this.animationId !== null
+  }
+
+  /**
+   * Global Sync 장벽 대기 중인지 확인
+   * 모든 예상 슬롯이 등록될 때까지 대기 중이면 true
+   */
+  isWaitingForSync(): boolean {
+    return this.isWaitingForAllSlots
   }
 
   /**

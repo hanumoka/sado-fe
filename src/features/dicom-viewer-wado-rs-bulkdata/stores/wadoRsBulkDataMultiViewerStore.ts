@@ -23,16 +23,23 @@ import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
 import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
-// 배치 프리페처 비활성화: Cornerstone Pool Manager 직접 활용
+// TODO: 배치 프리페처 최적화 - HTTP 배치 요청으로 초기 버퍼 로딩 속도 개선
+// 현재는 개별 이미지 로딩 사용, 향후 loadAndCacheFrameBatch 통합 예정
 // import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
+// import { loadAndCacheFrameBatch } from '../utils/wadoRsBulkDataBatchLoader'
 // import { clearPixelDataCache } from '../utils/wadoRsPixelDataCache'
 import { clearImageCache as clearRenderedCache } from '@/lib/cornerstone/wadoRsRenderedLoader'
+import {
+  getRenderingMode,
+  checkGpuSupport,
+  reinitializeCornerstone,
+  type RenderingMode,
+} from '@/lib/cornerstone/initCornerstone'
+import type { SyncMode } from '@/lib/utils/BaseCineAnimationManager'
+import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
 const DEBUG_STORE = false
-// 기존 배치 로더는 IImage 구조 문제로 비활성화
-// 대신 prefetchAllFrames + Fetch Interceptor 방식 사용 (안전한 방식)
-// import { loadAndCacheFrameBatch } from '../utils/wadoRsBulkDataBatchLoader'
 
 // ==================== 초기 상태 생성 ====================
 
@@ -178,6 +185,13 @@ interface WadoRsBulkDataMultiViewerActions {
   setTotalThumbnailCount: (count: number) => void
   markThumbnailLoaded: (sopInstanceUid: string) => void
   resetThumbnailTracking: () => void
+
+  // 렌더링 모드 설정
+  setRenderingMode: (mode: RenderingMode) => Promise<boolean>
+  refreshGpuSupport: () => boolean
+
+  // 동기화 설정
+  setSyncMode: (mode: SyncMode) => void
 }
 
 type WadoRsBulkDataMultiViewerStore = WadoRsBulkDataMultiViewerState & WadoRsBulkDataMultiViewerActions
@@ -185,10 +199,10 @@ type WadoRsBulkDataMultiViewerStore = WadoRsBulkDataMultiViewerState & WadoRsBul
 // ==================== 헬퍼 함수 ====================
 
 /**
- * Progressive Playback: 초기 버퍼 대기 (폴링 방식)
+ * Progressive Playback: 초기 버퍼 대기 (이벤트 기반)
  *
- * 모든 프레임이 로드될 때까지 기다리지 않고,
- * 초기 버퍼(INITIAL_BUFFER_SIZE)가 채워지면 재생 시작
+ * 폴링 대신 이벤트 기반으로 버퍼 준비 완료 감지
+ * markFrameLoaded()에서 조건 충족 시 Promise resolve
  *
  * 조건:
  * 1. Frame 0이 로드됨 (첫 번째 프레임 필수)
@@ -197,48 +211,78 @@ type WadoRsBulkDataMultiViewerStore = WadoRsBulkDataMultiViewerState & WadoRsBul
  *
  * 타임아웃 시: Frame 0만 로드되었으면 재생 시작
  */
+
+// 버퍼 준비 대기 Promise 저장 (이벤트 기반 동기화용)
+interface BufferWaitEntry {
+  resolve: () => void
+  requiredFrames: number
+  hasFrame0Required: boolean
+}
+const bufferReadyPromises = new Map<number, BufferWaitEntry>()
+
+// 버퍼 준비 완료 체크 및 resolve (markFrameLoaded에서 호출)
+function checkAndResolveBufferReady(slotId: number, loadedFrames: Set<number>, isPreloaded: boolean): void {
+  const entry = bufferReadyPromises.get(slotId)
+  if (!entry) return
+
+  const hasFrame0 = loadedFrames.has(0)
+  const loadedCount = loadedFrames.size
+
+  // 조건 충족: Frame 0 + 충분한 프레임 또는 전체 로드 완료
+  if ((hasFrame0 && loadedCount >= entry.requiredFrames) || isPreloaded) {
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Initial buffer ready for slot ${slotId}: ${loadedCount} frames loaded (event-based)`)
+    entry.resolve()
+    bufferReadyPromises.delete(slotId)
+  }
+}
+
 async function waitForInitialBuffer(
   slotId: number,
   requiredFrames: number,
   get: () => WadoRsBulkDataMultiViewerStore,
   timeout = 10000
 ): Promise<void> {
+  const slot = get().slots[slotId]
+
+  // 슬롯 없음: 즉시 resolve
+  if (!slot) {
+    return Promise.resolve()
+  }
+
+  const hasFrame0 = slot.loadedFrames.has(0)
+  const loadedCount = slot.loadedFrames.size
+
+  // 이미 조건 충족: 즉시 resolve
+  if ((hasFrame0 && loadedCount >= requiredFrames) || slot.isPreloaded) {
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Initial buffer already ready for slot ${slotId}: ${loadedCount} frames`)
+    return Promise.resolve()
+  }
+
+  // 이벤트 기반 대기: markFrameLoaded에서 조건 충족 시 resolve
   return new Promise((resolve) => {
-    const startTime = Date.now()
+    // 대기 엔트리 등록
+    bufferReadyPromises.set(slotId, {
+      resolve,
+      requiredFrames,
+      hasFrame0Required: true,
+    })
 
-    const check = () => {
-      const slot = get().slots[slotId]
-      if (!slot) {
-        resolve()
-        return
-      }
+    // 타임아웃 설정
+    setTimeout(() => {
+      const entry = bufferReadyPromises.get(slotId)
+      if (entry) {
+        const currentSlot = get().slots[slotId]
+        const currentHasFrame0 = currentSlot?.loadedFrames.has(0) ?? false
+        const currentLoadedCount = currentSlot?.loadedFrames.size ?? 0
 
-      const hasFrame0 = slot.loadedFrames.has(0)
-      const loadedCount = slot.loadedFrames.size
-
-      // 조건 충족: Frame 0 + 충분한 프레임 또는 전체 로드 완료
-      if ((hasFrame0 && loadedCount >= requiredFrames) || slot.isPreloaded) {
-        if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Initial buffer ready for slot ${slotId}: ${loadedCount} frames loaded`)
-        resolve()
-        return
-      }
-
-      // 타임아웃 체크
-      if (Date.now() - startTime > timeout) {
-        if (hasFrame0) {
-          if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Buffer timeout for slot ${slotId}, starting with ${loadedCount} frames`)
-          resolve()
-        } else {
-          // Frame 0도 없으면 계속 대기
-          setTimeout(check, 50)
+        if (currentHasFrame0) {
+          if (DEBUG_STORE) console.warn(`[WadoRsBulkDataViewer] Buffer timeout for slot ${slotId}, starting with ${currentLoadedCount} frames`)
         }
-        return
+
+        bufferReadyPromises.delete(slotId)
+        resolve()
       }
-
-      setTimeout(check, 50)
-    }
-
-    check()
+    }, timeout)
   })
 }
 
@@ -264,6 +308,14 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   thumbnailsLoaded: new Set<string>(),
   totalThumbnailCount: 0,
   allThumbnailsLoaded: false,
+
+  // 렌더링 모드 설정
+  renderingMode: getRenderingMode() as RenderingMode,
+  isRenderingModeChanging: false,
+  gpuSupported: checkGpuSupport(),
+
+  // 동기화 설정
+  syncMode: 'global-sync' as SyncMode,
 
   // ==================== 레이아웃 관리 ====================
 
@@ -747,6 +799,14 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
 
     if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] OHIF-style playAll: ${multiframeSlotIds.length} slots`)
 
+    // Phase 0: Global Sync 준비 - 애니메이션 매니저에 예상 슬롯 알림
+    // 모든 슬롯이 registerSlot()을 호출할 때까지 애니메이션 시작을 지연
+    const syncMode = get().syncMode
+    if (syncMode === 'global-sync') {
+      wadoRsBulkDataCineAnimationManager.prepareForGlobalSync(multiframeSlotIds)
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Global Sync barrier set for ${multiframeSlotIds.length} slots`)
+    }
+
     // OHIF 방식: 2단계 프리로드 + 동시 재생
     // Phase 1: 모든 슬롯의 초기 버퍼(15프레임)를 동시에 로드
     // Phase 2: 초기 버퍼 완료 후 동시 재생 시작
@@ -781,8 +841,27 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1 completed: Initial buffers loaded`)
     }
 
+    // Phase 1.5: 모든 슬롯의 초기 버퍼 준비 확인 (명시적 대기)
+    // 프리로드 완료 후에도 loadedFrames가 실제로 채워졌는지 확인
+    // CRITICAL: preloadSlotFrames와 동일한 공식 사용 (15프레임 또는 15% 중 작은 값)
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1.5: Waiting for all slots to have initial buffer ready`)
+
+    await Promise.all(
+      multiframeSlotIds.map(async (slotId) => {
+        const slot = get().slots[slotId]
+        if (!slot?.instance) return
+        const numberOfFrames = slot.instance.numberOfFrames
+        // preloadSlotFrames와 동일한 공식: Math.min(15, Math.ceil(numberOfFrames * 0.15))
+        const requiredFrames = Math.min(15, Math.ceil(numberOfFrames * 0.15))
+        await waitForInitialBuffer(slotId, requiredFrames, get, 15000)
+      })
+    )
+
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Phase 1.5 completed: All slots have initial buffer ready`)
+
     // Phase 2: 모든 슬롯 동시 재생 시작
-    // 초기 버퍼가 로드되었으므로 즉시 재생 가능
+    // 모든 슬롯의 초기 버퍼가 준비되었으므로 동시에 재생 시작
+    // Global Sync 모드에서는 모든 슬롯을 프레임 0에서 시작하도록 설정
     const updatedSlots: Record<number, WadoRsBulkDataSlotState> = {}
     for (const slotId of multiframeSlotIds) {
       const slot = get().slots[slotId]
@@ -790,6 +869,7 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         updatedSlots[slotId] = {
           ...slot,
           isPlaying: true,
+          currentFrame: 0, // 모든 슬롯 프레임 0에서 시작 (Global Sync 동시 시작 보장)
         }
       }
     }
@@ -922,7 +1002,10 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       // Phase 1: 초기 버퍼 (15프레임 또는 15%) - 빠른 재생 시작
       // Phase 2: 나머지 프레임 - 백그라운드 로드
       const INITIAL_BUFFER_SIZE = Math.min(15, Math.ceil(numberOfFrames * 0.15))
-      const BATCH_SIZE = 10
+      // 브라우저 HTTP/1.1 연결 제한 (6개/호스트) 고려
+      // 4 슬롯 × BATCH_SIZE = 동시 요청 수
+      // BATCH_SIZE=1로 설정하여 4개 동시 요청 (6개 제한 내)
+      const BATCH_SIZE = 1
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone wadors 로더가 PixelData를 디코딩할 수 있음
       if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)
@@ -1034,6 +1117,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
   },
 
   finishSlotPreload: (slotId) => {
+    const slot = get().slots[slotId]
+
     set((state) => ({
       slots: {
         ...state.slots,
@@ -1045,6 +1130,11 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         },
       },
     }))
+
+    // 이벤트 기반 버퍼 대기 resolve (isPreloaded=true로 전체 로드 완료)
+    if (slot) {
+      checkAndResolveBufferReady(slotId, slot.loadedFrames, true)
+    }
   },
 
   // ==================== Progressive Playback ====================
@@ -1066,6 +1156,9 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         },
       },
     }))
+
+    // 이벤트 기반 버퍼 대기 resolve 체크
+    checkAndResolveBufferReady(slotId, newLoadedFrames, slot.isPreloaded)
   },
 
   // ==================== 성능 추적 ====================
@@ -1256,6 +1349,106 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       allThumbnailsLoaded: false,
     })
   },
+
+  // ==================== 렌더링 모드 설정 ====================
+
+  /**
+   * 렌더링 모드 변경 (CPU/GPU)
+   *
+   * 주의: 렌더링 모드 변경 시 모든 재생이 중단되고 슬롯이 리셋됩니다.
+   * RenderingEngine은 새 모드로 재생성됩니다.
+   */
+  setRenderingMode: async (mode: RenderingMode): Promise<boolean> => {
+    const currentMode = get().renderingMode
+
+    // 같은 모드면 스킵
+    if (currentMode === mode) {
+      return true
+    }
+
+    // GPU 모드 요청 시 지원 여부 체크
+    if (mode === 'gpu' && !get().gpuSupported) {
+      console.warn('[WadoRsBulkDataViewer] GPU rendering not supported on this device')
+      return false
+    }
+
+    // 전환 시작
+    set({ isRenderingModeChanging: true })
+
+    if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Changing rendering mode: ${currentMode} → ${mode}`)
+
+    try {
+      // 1. 모든 재생 중지
+      get().pauseAll()
+
+      // 2. Cornerstone 렌더링 모드 재초기화
+      const useCPU = mode === 'cpu'
+      const success = await reinitializeCornerstone(useCPU)
+
+      if (!success) {
+        console.error('[WadoRsBulkDataViewer] Failed to reinitialize Cornerstone')
+        set({ isRenderingModeChanging: false })
+        return false
+      }
+
+      // 3. 모든 슬롯 상태 리셋 (stackVersion 증가로 Stack 재설정 트리거)
+      const slots = get().slots
+      const resetSlots: Record<number, WadoRsBulkDataSlotState> = {}
+
+      for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {
+        if (slots[i]) {
+          resetSlots[i] = {
+            ...slots[i],
+            isPreloading: false,
+            isPreloaded: false,
+            preloadProgress: 0,
+            currentFrame: 0,
+            isPlaying: false,
+            loadedFrames: new Set<number>(),
+            isBuffering: false,
+            stackVersion: (slots[i].stackVersion ?? 0) + 1,
+          }
+        }
+      }
+
+      // 4. 상태 업데이트
+      set({
+        renderingMode: mode,
+        isRenderingModeChanging: false,
+        slots: resetSlots,
+      })
+
+      if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Rendering mode changed to ${mode.toUpperCase()}`)
+      return true
+    } catch (error) {
+      console.error('[WadoRsBulkDataViewer] Failed to change rendering mode:', error)
+      set({ isRenderingModeChanging: false })
+      return false
+    }
+  },
+
+  /**
+   * GPU 지원 여부 새로고침
+   */
+  refreshGpuSupport: () => {
+    const supported = checkGpuSupport()
+    set({ gpuSupported: supported })
+    return supported
+  },
+
+  // ==================== 동기화 설정 ====================
+
+  /**
+   * 동기화 모드 설정
+   */
+  setSyncMode: (mode: SyncMode) => {
+    set({ syncMode: mode })
+    // CineAnimationManager에도 동기화 모드 전달
+    wadoRsBulkDataCineAnimationManager.setSyncMode(mode)
+    if (DEBUG_STORE) {
+      console.log(`[WadoRsBulkDataViewer] Sync mode set to: ${mode}`)
+    }
+  },
     }),
     {
       name: 'wado-rs-bulkdata-viewer-settings',
@@ -1266,6 +1459,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         globalFps: state.globalFps,
         globalFormat: state.globalFormat,
         globalResolution: state.globalResolution,
+        renderingMode: state.renderingMode,
+        syncMode: state.syncMode,
       }),
       migrate: (persistedState, version) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1282,6 +1477,15 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         ...currentState,
         ...(persistedState as Partial<WadoRsBulkDataMultiViewerState>),
       }),
+      // sessionStorage에서 복원 시 CineAnimationManager에 동기화 모드 전달
+      onRehydrateStorage: () => (state) => {
+        if (state?.syncMode) {
+          wadoRsBulkDataCineAnimationManager.setSyncMode(state.syncMode)
+          if (DEBUG_STORE) {
+            console.log(`[WadoRsBulkDataViewer] Restored syncMode from session storage: ${state.syncMode}`)
+          }
+        }
+      },
     }
   )
 )

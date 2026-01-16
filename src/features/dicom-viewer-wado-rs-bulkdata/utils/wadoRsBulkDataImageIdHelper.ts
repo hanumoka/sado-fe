@@ -28,17 +28,13 @@ const API_BASE = ''
  */
 const THUMBNAIL_BASE = ''
 
-/** BulkData 포맷 타입 */
-export type BulkDataFormat = 'raw' | 'original' | 'jpeg-baseline'
-
 /**
- * WADO-RS BulkData imageId 생성
+ * WADO-RS BulkData imageId 생성 (Original 포맷)
  *
  * @param studyUid Study Instance UID
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param frameNumber 프레임 번호 (0-based, 멀티프레임용)
- * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩, jpeg-baseline: JPEG Baseline)
  * @returns wadors:URL 형식의 imageId
  *
  * @example
@@ -49,28 +45,18 @@ export type BulkDataFormat = 'raw' | 'original' | 'jpeg-baseline'
  * // 멀티프레임 (프레임 5, 0-based → frame 6)
  * createWadoRsBulkDataImageId('1.2.3', '1.2.4', '1.2.5', 5)
  * // → 'wadors:/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/6'
- *
- * // format=original 지정
- * createWadoRsBulkDataImageId('1.2.3', '1.2.4', '1.2.5', 0, 'original')
- * // → 'wadors:/dicomweb/studies/1.2.3/series/1.2.4/instances/1.2.5/frames/1?format=original'
  */
 export function createWadoRsBulkDataImageId(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  frameNumber?: number,
-  format?: BulkDataFormat
+  frameNumber?: number
 ): string {
   // DICOM frame 번호는 1-based
   const frameNum = frameNumber !== undefined ? frameNumber + 1 : 1
 
-  // WADO-RS BulkData URL 형식
-  let url = `${API_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNum}`
-
-  // format 파라미터 추가
-  if (format) {
-    url += `?format=${format}`
-  }
+  // WADO-RS BulkData URL 형식 (Original 포맷 - 기본값이므로 쿼리 파라미터 불필요)
+  const url = `${API_BASE}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${sopInstanceUid}/frames/${frameNum}`
 
   return `wadors:${url}`
 }
@@ -82,24 +68,22 @@ export function createWadoRsBulkDataImageId(
  * @param seriesUid Series Instance UID
  * @param sopInstanceUid SOP Instance UID
  * @param numberOfFrames 총 프레임 수
- * @param format 데이터 포맷 (raw: 디코딩된 픽셀, original: 원본 인코딩, jpeg-baseline: JPEG Baseline)
  * @returns imageId 배열
  */
 export function createWadoRsBulkDataImageIds(
   studyUid: string,
   seriesUid: string,
   sopInstanceUid: string,
-  numberOfFrames: number,
-  format?: BulkDataFormat
+  numberOfFrames: number
 ): string[] {
   // 단일 프레임인 경우
   if (numberOfFrames <= 1) {
-    return [createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid, undefined, format)]
+    return [createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid)]
   }
 
   // 멀티프레임: 각 프레임별 imageId 생성
   return Array.from({ length: numberOfFrames }, (_, i) =>
-    createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid, i, format)
+    createWadoRsBulkDataImageId(studyUid, seriesUid, sopInstanceUid, i)
   )
 }
 
@@ -134,7 +118,7 @@ export function getFrameNumberFromImageId(imageId: string): number {
   try {
     // wadors:http://host/dicomweb/studies/.../frames/N
     const url = imageId.replace('wadors:', '')
-    const match = url.match(/\/frames\/(\d+)$/)
+    const match = url.match(/\/frames\/(\d+)/)
     if (match) {
       // URL의 frame 번호는 1-based, 반환값은 0-based
       return parseInt(match[1], 10) - 1

@@ -30,7 +30,7 @@ import {
 import { searchInstances } from '@/lib/services/dicomWebService'
 import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { imageLoader } from '@cornerstonejs/core'
-import { createWadoRsRenderedImageId } from '@/lib/cornerstone/wadoRsRenderedLoader'
+import { createWadoRsRenderedImageId, clearImageCache } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { clearRenderedCache } from '../utils/wadoRsRenderedCache'
 import { cineAnimationManager } from '../utils/cineAnimationManager'
 
@@ -1508,12 +1508,16 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     // 2. 모든 재생 중지
     get().pauseAll()
 
+    // 3. 캐시 클리어 (모드 전환 시 이전 모드의 캐시된 데이터 삭제)
+    clearRenderedCache()  // Rendered 프레임 ArrayBuffer 캐시
+    clearImageCache()     // IImage 객체 캐시 (wadoRsRenderedLoader)
+
     try {
-      // 3. Cornerstone 재초기화
+      // 4. Cornerstone 재초기화
       const success = await reinitializeCornerstone(mode === 'cpu')
 
       if (success) {
-        // 4. 모든 슬롯 리셋 (RenderingEngine 재생성 트리거)
+        // 5. 모든 슬롯 리셋 (RenderingEngine 재생성 트리거)
         const slots = get().slots
         const resetSlots: Record<number, CornerstoneSlotState> = {}
         for (let i = 0; i < MAX_TOTAL_SLOTS; i++) {

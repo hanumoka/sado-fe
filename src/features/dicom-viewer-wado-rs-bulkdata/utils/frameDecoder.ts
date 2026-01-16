@@ -271,31 +271,140 @@ function createImageFrame(metadata: DicomPixelMetadata): Record<string, unknown>
 /**
  * Cornerstone 디코더를 통한 이미지 프레임 디코딩
  *
- * 참고: cornerstoneDICOMImageLoader의 내부 디코더 API는
- * 완전한 DICOM 파일을 기대하므로, 순수 압축 데이터만으로는
- * 직접 호출이 어려울 수 있습니다.
+ * 지원되는 디코딩 방법:
+ * 1. JPEG Baseline/Extended: Canvas API (브라우저 네이티브)
+ * 2. JPEG 2000: Cornerstone의 imageLoader 통한 디코딩
  *
- * 대안: Canvas를 통한 JPEG 디코딩 또는 외부 WASM 코덱 직접 호출
+ * 참고: JPEG 2000 클라이언트 디코딩은 Web Worker를 통해 수행됨
  */
 async function decodeImageFrameWithCodec(
-  _imageFrame: Record<string, unknown>,
+  imageFrame: Record<string, unknown>,
   transferSyntax: string,
   encodedPixelData: Uint8Array,
   metadata: DicomPixelMetadata
 ): Promise<ArrayBuffer> {
-  // 방법 1: JPEG 2000의 경우 @cornerstonejs/codec-openjpeg 직접 사용 시도
-  // 현재는 Canvas 기반 폴백 구현
-
-  // JPEG Baseline/Extended의 경우 Canvas API 사용 가능
+  // JPEG Baseline/Extended의 경우 Canvas API 사용 (가장 빠름)
   if (transferSyntax === TRANSFER_SYNTAX.JPEG_BASELINE ||
       transferSyntax === TRANSFER_SYNTAX.JPEG_EXTENDED) {
     return decodeJPEGWithCanvas(encodedPixelData, metadata)
   }
 
-  // JPEG 2000의 경우: 코덱 직접 호출 필요
-  // TODO: @cornerstonejs/codec-openjpeg의 decode 함수 직접 호출
-  // 현재는 에러 발생시켜 폴백 유도
+  // JPEG 2000 디코딩: Cornerstone의 디코더 사용 시도
+  if (transferSyntax === TRANSFER_SYNTAX.JPEG_2000 ||
+      transferSyntax === TRANSFER_SYNTAX.JPEG_2000_LOSSLESS) {
+    try {
+      return await decodeJPEG2000WithCornerstone(imageFrame, encodedPixelData, metadata)
+    } catch (error) {
+      if (DEBUG_DECODER) {
+        console.warn('[FrameDecoder] JPEG 2000 client-side decode failed, fallback to server:', error)
+      }
+      // 클라이언트 디코딩 실패 시 에러 발생 → 서버 사이드 디코딩 유도
+      throw new Error(`JPEG 2000 client-side decoding failed: ${error}. Use raw format for server-side decoding.`)
+    }
+  }
+
+  // 지원하지 않는 Transfer Syntax
   throw new Error(`Direct codec call not implemented for ${transferSyntax}. Need server-side decoding.`)
+}
+
+/**
+ * JPEG 2000 디코딩 (Cornerstone의 Web Worker 디코더 활용)
+ *
+ * Cornerstone3D의 dicom-image-loader는 내부적으로 OpenJPEG WASM 코덱을 사용
+ * 이 함수는 Cornerstone의 디코딩 파이프라인을 직접 호출하여 프레임 디코딩
+ */
+async function decodeJPEG2000WithCornerstone(
+  _imageFrame: Record<string, unknown>,
+  encodedPixelData: Uint8Array,
+  metadata: DicomPixelMetadata
+): Promise<ArrayBuffer> {
+  // Cornerstone의 dicom-image-loader에서 decodeImageFrame을 사용하려면
+  // 완전한 imageFrame 객체가 필요함
+  // 현재는 직접 WASM 코덱 호출 대신 imageLoader를 통한 디코딩 권장
+
+  // 옵션 1: @cornerstonejs/codec-openjpeg 직접 호출 시도
+  try {
+    // 동적 import로 코덱 로드
+    const openjpegModule = await import('@cornerstonejs/codec-openjpeg')
+
+    if (openjpegModule && typeof openjpegModule.decode === 'function') {
+      const decodeOptions = {
+        rows: metadata.rows,
+        columns: metadata.columns,
+        bitsAllocated: metadata.bitsAllocated,
+        bitsStored: metadata.bitsStored,
+        highBit: metadata.highBit,
+        pixelRepresentation: metadata.pixelRepresentation,
+        samplesPerPixel: metadata.samplesPerPixel,
+      }
+
+      const decodedFrame = await openjpegModule.decode(encodedPixelData, decodeOptions)
+
+      if (DEBUG_DECODER) {
+        console.log('[FrameDecoder] JPEG 2000 decoded via @cornerstonejs/codec-openjpeg:', {
+          inputSize: encodedPixelData.byteLength,
+          outputSize: decodedFrame.byteLength,
+        })
+      }
+
+      return decodedFrame.buffer || decodedFrame
+    }
+  } catch (codecError) {
+    if (DEBUG_DECODER) {
+      console.warn('[FrameDecoder] @cornerstonejs/codec-openjpeg not available:', codecError)
+    }
+  }
+
+  // 옵션 2: dicom-image-loader의 내부 디코더 호출 시도
+  try {
+    const dicomImageLoader = await import('@cornerstonejs/dicom-image-loader')
+
+    // decodeImageFrame이 export되어 있는지 확인
+    if (dicomImageLoader && typeof dicomImageLoader.decodeImageFrame === 'function') {
+      return new Promise((resolve, reject) => {
+        const imageFrame = {
+          rows: metadata.rows,
+          columns: metadata.columns,
+          bitsAllocated: metadata.bitsAllocated,
+          bitsStored: metadata.bitsStored,
+          highBit: metadata.highBit,
+          pixelRepresentation: metadata.pixelRepresentation,
+          samplesPerPixel: metadata.samplesPerPixel,
+          photometricInterpretation: metadata.photometricInterpretation,
+          pixelData: encodedPixelData,
+        }
+
+        const decodeConfig = {}
+        const options = {}
+
+        dicomImageLoader.decodeImageFrame(
+          imageFrame,
+          TRANSFER_SYNTAX.JPEG_2000_LOSSLESS,
+          encodedPixelData,
+          decodeConfig,
+          options,
+          (decodedFrame: unknown, error: Error | null) => {
+            if (error) {
+              reject(error)
+            } else if (decodedFrame && typeof decodedFrame === 'object' && 'pixelData' in decodedFrame) {
+              const frame = decodedFrame as { pixelData: Uint8Array | ArrayBuffer }
+              const pixelData = frame.pixelData
+              resolve(pixelData instanceof ArrayBuffer ? pixelData : pixelData.buffer)
+            } else {
+              reject(new Error('Invalid decoded frame result'))
+            }
+          }
+        )
+      })
+    }
+  } catch (loaderError) {
+    if (DEBUG_DECODER) {
+      console.warn('[FrameDecoder] dicom-image-loader decodeImageFrame not available:', loaderError)
+    }
+  }
+
+  // 모든 클라이언트 디코딩 옵션 실패
+  throw new Error('No JPEG 2000 decoder available. Server-side decoding required.')
 }
 
 /**

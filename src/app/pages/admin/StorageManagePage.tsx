@@ -47,7 +47,7 @@ import {
   fetchMonitoringTasks,
 } from '@/lib/services/adminService'
 import { formatBytes } from '@/lib/utils'
-import type { ClusterStatus, VolumeInfo, FilerEntry } from '@/types/seaweedfs'
+import type { ClusterStatus, VolumeInfo, FilerEntry, MasterNode, VolumeServerNode, FilerNode } from '@/types/seaweedfs'
 
 // Components
 import StatCard from '@/components/admin/StatCard'
@@ -220,9 +220,11 @@ export default function StorageManagePage() {
     switch (health) {
       case 'HEALTHY':
         return <CheckCircle className="h-5 w-5 text-green-500" />
-      case 'DEGRADED':
+      case 'WARNING':
         return <AlertTriangle className="h-5 w-5 text-yellow-500" />
-      case 'DOWN':
+      case 'DEGRADED':
+        return <AlertTriangle className="h-5 w-5 text-orange-500" />
+      case 'CRITICAL':
         return <XCircle className="h-5 w-5 text-red-500" />
     }
   }
@@ -231,11 +233,31 @@ export default function StorageManagePage() {
     switch (health) {
       case 'HEALTHY':
         return '정상'
+      case 'WARNING':
+        return '일부 노드 다운'
       case 'DEGRADED':
-        return '부분 장애'
-      case 'DOWN':
-        return '장애'
+        return 'Quorum 위험'
+      case 'CRITICAL':
+        return '서비스 불가'
     }
+  }
+
+  const getHealthDescription = (health: ClusterStatus['health']) => {
+    switch (health) {
+      case 'HEALTHY':
+        return '모든 노드가 정상 작동 중입니다.'
+      case 'WARNING':
+        return '일부 노드가 다운되었지만 서비스는 정상적으로 이용 가능합니다.'
+      case 'DEGRADED':
+        return 'Master 과반수가 다운되었거나 Filer가 없습니다. 조치가 필요합니다.'
+      case 'CRITICAL':
+        return 'Leader가 없거나 모든 Volume Server가 다운되었습니다. 즉시 조치가 필요합니다.'
+    }
+  }
+
+  const getNodeStatusCount = <T extends { status: 'UP' | 'DOWN' }>(nodes: T[]) => {
+    const upCount = nodes.filter(n => n.status === 'UP').length
+    return { upCount, total: nodes.length }
   }
 
   // ========== Tab Content Renderers ==========
@@ -568,80 +590,184 @@ export default function StorageManagePage() {
             </div>
           ) : clusterStatus ? (
             <>
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
+              {/* Health Banner */}
+              <div className={`rounded-lg border p-4 ${
+                clusterStatus.health === 'HEALTHY' ? 'bg-green-50 border-green-200' :
+                clusterStatus.health === 'WARNING' ? 'bg-yellow-50 border-yellow-200' :
+                clusterStatus.health === 'DEGRADED' ? 'bg-orange-50 border-orange-200' :
+                'bg-red-50 border-red-200'
+              }`}>
+                <div className="flex items-center gap-3">
                   {getHealthIcon(clusterStatus.health)}
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    클러스터 상태: {getHealthText(clusterStatus.health)}
-                  </h3>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600">전체 Volume</p>
-                    <p className="text-xl font-bold text-gray-900">{clusterStatus.totalVolumes}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600">전체 파일</p>
-                    <p className="text-xl font-bold text-gray-900">{clusterStatus.totalFiles.toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600">사용 용량</p>
-                    <p className="text-xl font-bold text-gray-900">{formatBytes(clusterStatus.totalUsedSize)}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600">전체 용량</p>
-                    <p className="text-xl font-bold text-gray-900">{formatBytes(clusterStatus.totalCapacity)}</p>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      클러스터 상태: {getHealthText(clusterStatus.health)}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {getHealthDescription(clusterStatus.health)}
+                    </p>
                   </div>
                 </div>
               </div>
 
+              {/* 노드 상태 카드 */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Master 노드 */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h4 className="font-semibold text-gray-900 mb-3">Master 노드</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-900">Master 노드</h4>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      getNodeStatusCount(clusterStatus.masters).upCount === getNodeStatusCount(clusterStatus.masters).total
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {getNodeStatusCount(clusterStatus.masters).upCount}/{getNodeStatusCount(clusterStatus.masters).total} UP
+                    </span>
+                  </div>
                   <div className="space-y-2">
-                    {clusterStatus.masters.map((master, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                        <span className="text-sm text-gray-700">{master.address}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          master.isLeader ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {master.isLeader ? 'Leader' : 'Follower'}
-                        </span>
+                    {clusterStatus.masters.map((master: MasterNode, idx: number) => (
+                      <div key={idx} className={`p-2 rounded border ${
+                        master.status === 'UP' ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-100'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">{master.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">{master.address}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {master.isLeader && master.status === 'UP' && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">Leader</span>
+                            )}
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              master.status === 'UP' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {master.status}
+                            </span>
+                          </div>
+                        </div>
+                        {master.status === 'DOWN' && master.errorMessage && (
+                          <p className="text-xs text-red-600 mt-1 truncate" title={master.errorMessage}>
+                            {master.errorMessage}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
 
+                {/* Volume Server */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h4 className="font-semibold text-gray-900 mb-3">Volume Server</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-900">Volume Server</h4>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      getNodeStatusCount(clusterStatus.volumeServers).upCount === getNodeStatusCount(clusterStatus.volumeServers).total
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {getNodeStatusCount(clusterStatus.volumeServers).upCount}/{getNodeStatusCount(clusterStatus.volumeServers).total} UP
+                    </span>
+                  </div>
                   <div className="space-y-2">
-                    {clusterStatus.volumeServers.map((vs, idx) => (
-                      <div key={idx} className="p-2 bg-gray-50 rounded">
+                    {clusterStatus.volumeServers.map((vs: VolumeServerNode, idx: number) => (
+                      <div key={idx} className={`p-2 rounded border ${
+                        vs.status === 'UP' ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-100'
+                      }`}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm text-gray-700">{vs.address}</span>
-                          <span className="text-xs text-gray-500">{vs.volumeCount} volumes</span>
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">{vs.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">{vs.volumeCount} volumes</span>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            vs.status === 'UP' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {vs.status}
+                          </span>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {formatBytes(vs.usedDiskSize)} / {formatBytes(vs.usedDiskSize + vs.freeDiskSize)}
-                        </div>
+                        {vs.status === 'UP' && vs.totalDiskSpace > 0 && (
+                          <>
+                            <div className="h-2 bg-gray-200 rounded-full overflow-hidden mt-1">
+                              <div
+                                className={`h-full transition-all ${
+                                  (vs.usedDiskSize / vs.totalDiskSpace) > 0.9 ? 'bg-red-500' :
+                                  (vs.usedDiskSize / vs.totalDiskSpace) > 0.7 ? 'bg-yellow-500' :
+                                  'bg-blue-500'
+                                }`}
+                                style={{ width: `${Math.min((vs.usedDiskSize / vs.totalDiskSpace) * 100, 100)}%` }}
+                              />
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {formatBytes(vs.usedDiskSize)} / {formatBytes(vs.totalDiskSpace)}
+                            </div>
+                          </>
+                        )}
+                        {vs.status === 'DOWN' && vs.errorMessage && (
+                          <p className="text-xs text-red-600 mt-1 truncate" title={vs.errorMessage}>
+                            {vs.errorMessage}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
 
+                {/* Filer */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h4 className="font-semibold text-gray-900 mb-3">Filer</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-900">Filer 노드</h4>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      getNodeStatusCount(clusterStatus.filers).upCount === getNodeStatusCount(clusterStatus.filers).total
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {getNodeStatusCount(clusterStatus.filers).upCount}/{getNodeStatusCount(clusterStatus.filers).total} UP
+                    </span>
+                  </div>
                   <div className="space-y-2">
-                    {clusterStatus.filers.map((filer, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                        <span className="text-sm text-gray-700">{filer.address}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          filer.status === 'UP' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>
-                          {filer.status}
-                        </span>
+                    {clusterStatus.filers.map((filer: FilerNode, idx: number) => (
+                      <div key={idx} className={`p-2 rounded border ${
+                        filer.status === 'UP' ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-100'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">{filer.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">{filer.address}</span>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            filer.status === 'UP' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {filer.status}
+                          </span>
+                        </div>
+                        {filer.status === 'DOWN' && filer.errorMessage && (
+                          <p className="text-xs text-red-600 mt-1 truncate" title={filer.errorMessage}>
+                            {filer.errorMessage}
+                          </p>
+                        )}
                       </div>
                     ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cluster Summary */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h4 className="font-semibold text-gray-900 mb-4">클러스터 요약</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{clusterStatus.totalVolumes}</p>
+                    <p className="text-sm text-gray-500">전체 Volume</p>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{clusterStatus.totalFiles.toLocaleString()}</p>
+                    <p className="text-sm text-gray-500">전체 파일</p>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{formatBytes(clusterStatus.totalUsedSize)}</p>
+                    <p className="text-sm text-gray-500">사용 용량</p>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{formatBytes(clusterStatus.totalCapacity)}</p>
+                    <p className="text-sm text-gray-500">전체 용량</p>
                   </div>
                 </div>
               </div>

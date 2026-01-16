@@ -11,6 +11,7 @@ import WadoRsViewerPage from '@/app/pages/WadoRsViewerPage'
 import WadoUriViewerPage from '@/app/pages/WadoUriViewerPage'
 import MultiSlotViewerPage from '@/app/pages/MultiSlotViewerPage'
 import MjpegViewerPage from '@/app/pages/MjpegViewerPage'
+import MjpegWadoRsViewerPage from '@/app/pages/MjpegWadoRsViewerPage'
 import NotFoundPage from '@/app/pages/NotFoundPage'
 // Admin Pages
 import StorageManagePage from '@/app/pages/admin/StorageManagePage'
@@ -61,6 +62,9 @@ export default function Router() {
 
         {/* MJPEG Streaming Viewer POC (Full Screen - Layout 밖) */}
         <Route path="/viewer/mjpeg" element={<MjpegViewerPage />} />
+
+        {/* MJPEG + WADO-RS Hybrid Viewer (Full Screen - Layout 밖) */}
+        <Route path="/viewer/mjpeg-wado-rs/:studyInstanceUid/:seriesInstanceUid" element={<MjpegWadoRsViewerPage />} />
 
         {/* 404 Not Found */}
         <Route path="*" element={<NotFoundPage />} />

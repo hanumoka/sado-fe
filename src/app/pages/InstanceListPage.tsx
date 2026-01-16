@@ -41,18 +41,18 @@ interface SortConfig {
 }
 
 const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
-  { key: 'tenantId', label: 'Tenant', className: 'w-16' },
-  { key: 'patientId', label: 'Patient', className: 'w-20' },
-  { key: 'studyId', label: 'Study', className: 'w-20' },
-  { key: 'seriesId', label: 'Series', className: 'w-20' },
-  { key: 'id', label: 'ID', className: 'w-16' },
-  { key: 'sopInstanceUid', label: 'SOP Instance UID' },
-  { key: 'instanceNumber', label: 'No.', className: 'w-16' },
-  { key: 'rows', label: 'Rows', className: 'w-20' },
-  { key: 'columns', label: 'Cols', className: 'w-20' },
-  { key: 'fileSize', label: 'Size', className: 'w-24' },
-  { key: 'storageTier', label: 'Tier', className: 'w-24' },
-  { key: 'createdAt', label: '생성일', className: 'w-40' },
+  { key: 'tenantId', label: 'Tenant', className: 'w-16 min-w-[64px]' },
+  { key: 'patientId', label: 'Patient', className: 'w-20 min-w-[80px]' },
+  { key: 'studyId', label: 'Study', className: 'w-20 min-w-[80px]' },
+  { key: 'seriesId', label: 'Series', className: 'w-20 min-w-[80px]' },
+  { key: 'id', label: 'ID', className: 'w-16 min-w-[64px]' },
+  { key: 'sopInstanceUid', label: 'SOP Instance UID', className: 'min-w-[200px]' },
+  { key: 'instanceNumber', label: 'No.', className: 'w-16 min-w-[64px]' },
+  { key: 'rows', label: 'Rows', className: 'w-20 min-w-[80px]' },
+  { key: 'columns', label: 'Cols', className: 'w-20 min-w-[80px]' },
+  { key: 'fileSize', label: 'Size', className: 'w-24 min-w-[96px]' },
+  { key: 'storageTier', label: 'Tier', className: 'w-24 min-w-[96px]' },
+  { key: 'createdAt', label: '생성일', className: 'w-40 min-w-[160px]' },
 ]
 
 function getTierBadgeColor(tier?: string): string {
@@ -228,17 +228,18 @@ export default function InstanceListPage() {
       {/* 인스턴스 목록 */}
       {!isLoading && !error && pageData && !pageData.empty && (
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="relative">
+            <div className="overflow-x-auto">
+              <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16 min-w-[64px] sticky left-0 bg-gray-50 z-10">
                     #
                   </th>
                   {COLUMNS.map((column) => (
                     <th
                       key={column.key}
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${column.className || ''}`}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${column.className || ''} ${column.key === 'tenantId' ? 'sticky left-[64px] bg-gray-50 z-10' : ''}`}
                       onClick={() => handleSort(column.key)}
                     >
                       <div className="flex items-center gap-1">
@@ -256,10 +257,10 @@ export default function InstanceListPage() {
                     key={instance.id}
                     className="hover:bg-gray-50 transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 sticky left-0 bg-white z-10">
                       {(currentPage - 1) * PAGE_SIZE + index + 1}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center sticky left-[64px] bg-white z-10">
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
                         {instance.tenantId ?? '-'}
                       </span>
@@ -309,7 +310,10 @@ export default function InstanceListPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
+            {/* 우측 스크롤 인디케이터 (그림자) */}
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none" />
           </div>
 
           {/* 서버사이드 페이지네이션 */}

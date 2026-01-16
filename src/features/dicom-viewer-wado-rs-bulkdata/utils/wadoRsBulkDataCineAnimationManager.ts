@@ -7,9 +7,14 @@
 
 import { BaseCineAnimationManager, type FrameAdvanceResult } from '@/lib/utils/BaseCineAnimationManager'
 import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMultiViewerStore'
+import { createWadoRsBulkDataImageIds } from './wadoRsBulkDataImageIdHelper'
+import { loadWadoRsBulkDataImage } from './wadoRsBulkDataImageLoader'
 
 // 디버그 로그 플래그 (필요시 true로 변경)
 const DEBUG_CINE = false
+
+// Prefetch 선행 로딩 프레임 수
+const PREFETCH_LOOKAHEAD = 3
 
 class WadoRsBulkDataCineAnimationManager extends BaseCineAnimationManager {
   constructor() {
@@ -98,8 +103,47 @@ class WadoRsBulkDataCineAnimationManager extends BaseCineAnimationManager {
       }))
     }
 
+    // Prefetch 트리거 (다음 N프레임 선행 로딩)
+    this.triggerPrefetch(slotId, nextIndex)
+
     // 다음 프레임으로 전진
     return { shouldAdvance: true, nextIndex }
+  }
+
+  /**
+   * 현재 프레임 기준 다음 N프레임 선행 로딩
+   * 버퍼링 빈도를 줄이기 위해 앞선 프레임을 미리 로드
+   */
+  private triggerPrefetch(slotId: number, currentIndex: number): void {
+    const store = useWadoRsBulkDataMultiViewerStore.getState()
+    const slot = store.slots[slotId]
+    if (!slot?.instance) return
+
+    const { numberOfFrames, studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
+
+    // 다음 N프레임 중 미로드 프레임 확인 및 로드 요청
+    for (let i = 1; i <= PREFETCH_LOOKAHEAD; i++) {
+      const frameIndex = (currentIndex + i) % numberOfFrames
+      if (!slot.loadedFrames.has(frameIndex)) {
+        const imageIds = createWadoRsBulkDataImageIds(
+          studyInstanceUid,
+          seriesInstanceUid,
+          sopInstanceUid,
+          numberOfFrames
+        )
+        // 백그라운드 로딩 (await 없이, 실패 무시)
+        loadWadoRsBulkDataImage(imageIds[frameIndex]).then(() => {
+          // 로드 성공 시 마킹
+          store.markFrameLoaded(slotId, frameIndex)
+        }).catch(() => {
+          // 실패 시 무시 (다음 기회에 재시도)
+        })
+
+        if (DEBUG_CINE) {
+          console.log(`${this.logPrefix} Prefetch: slot ${slotId} frame ${frameIndex}`)
+        }
+      }
+    }
   }
 
   /**

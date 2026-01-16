@@ -82,9 +82,6 @@ export function CornerstoneGlobalControls() {
     clearAllSlots,
   } = useCornerstoneMultiViewerStore()
 
-  // GPU 모드 전환 경고 모달 상태
-  const [showGpuWarning, setShowGpuWarning] = useState(false)
-
   // 캐시 통계 상태
   const [showStats, setShowStats] = useState(false)
   const [cacheStats, setCacheStats] = useState<{ size: number; entries: number; hitRate: number } | null>(null)
@@ -106,21 +103,8 @@ export function CornerstoneGlobalControls() {
   // 렌더링 모드 변경 핸들러
   const handleRenderingModeChange = useCallback((mode: RenderingMode) => {
     if (mode === renderingMode || isRenderingModeChanging) return
-
-    // GPU 모드로 전환 시 경고 모달 표시
-    if (mode === 'gpu') {
-      setShowGpuWarning(true)
-    } else {
-      // CPU 모드로 전환은 바로 실행
-      setRenderingMode(mode)
-    }
+    setRenderingMode(mode)
   }, [renderingMode, isRenderingModeChanging, setRenderingMode])
-
-  // GPU 전환 확인
-  const confirmGpuSwitch = useCallback(async () => {
-    setShowGpuWarning(false)
-    await setRenderingMode('gpu')
-  }, [setRenderingMode])
 
   // 현재 재생 중인 슬롯 수
   const playingCount = Object.values(slots).filter((s) => s.isPlaying).length
@@ -348,36 +332,6 @@ export function CornerstoneGlobalControls() {
         </div>
       )}
 
-      {/* GPU 전환 경고 모달 */}
-      {showGpuWarning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 max-w-md mx-4 border border-gray-600 shadow-xl">
-            <h3 className="text-lg font-semibold text-white mb-4">GPU 렌더링으로 전환</h3>
-            <div className="text-gray-300 text-sm space-y-3">
-              <p>
-                GPU 렌더링 시 RGBA 이미지(WADO-RS Rendered)의 첫 사이클에서 깨짐 현상이 발생할 수 있습니다.
-              </p>
-              <p>
-                이 작업은 현재 진행 중인 재생을 중단하고 뷰포트를 재설정합니다.
-              </p>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setShowGpuWarning(false)}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors"
-              >
-                취소
-              </button>
-              <button
-                onClick={confirmGpuSwitch}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors"
-              >
-                GPU로 전환
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

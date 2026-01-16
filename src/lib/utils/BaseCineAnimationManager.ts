@@ -119,6 +119,7 @@ export abstract class BaseCineAnimationManager {
         info.currentIndex = 0
         try {
           info.viewport.setImageIdIndex(0)
+          info.viewport.render() // 강제 렌더링으로 Canvas 버퍼 즉시 플러시
         } catch (error) {
           if (this.debugEnabled) {
             console.error(`${this.logPrefix} Error resetting slot ${slotId} to frame 0:`, error)
@@ -368,13 +369,21 @@ export abstract class BaseCineAnimationManager {
         // 모든 슬롯 등록 완료 - 동시 시작!
         this.isWaitingForAllSlots = false
         this.expectedSlots.clear()
-        this.resetAllSlotsToFrameZero() // 모든 슬롯 프레임 0으로
-        this.start()
-        if (this.debugEnabled) {
-          console.log(
-            `${this.logPrefix} All ${this.activeSlots.size} slots registered, starting synchronized playback at frame 0`
-          )
-        }
+        this.resetAllSlotsToFrameZero() // 모든 슬롯 프레임 0으로 + render()
+
+        // 모든 viewport가 프레임 0을 렌더링한 후 애니메이션 시작
+        // requestAnimationFrame 2번으로 Canvas 버퍼 플러시 완료 보장
+        // 이 패턴은 Cornerstone에서도 사용되는 검증된 방법
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            this.start()
+            if (this.debugEnabled) {
+              console.log(
+                `${this.logPrefix} All ${this.activeSlots.size} slots registered, starting synchronized playback after render sync`
+              )
+            }
+          })
+        })
       } else if (this.debugEnabled) {
         const remaining = Array.from(this.expectedSlots).filter((id) => !this.activeSlots.has(id))
         console.log(`${this.logPrefix} Slot ${slotId} registered, waiting for slots: [${remaining.join(', ')}]`)

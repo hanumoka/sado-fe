@@ -43,19 +43,6 @@ export interface BaseSlotOverlayProps {
 
   /** 메타데이터 fetch 에러 (non-fatal 경고) */
   metadataError?: string | null
-
-  // === Pre-decode (사전 디코딩) ===
-
-  /** 사전 디코딩 중 여부 */
-  isPreDecoding?: boolean
-  /** 사전 디코딩 완료 여부 */
-  isPreDecoded?: boolean
-  /** 사전 디코딩 진행률 (0-100) */
-  preDecodeProgress?: number
-  /** 디코딩 프로그레스 바 색상 클래스 */
-  decodeProgressBarColor?: string
-  /** 디코딩 텍스트 색상 클래스 */
-  decodeProgressTextColor?: string
 }
 
 export function BaseSlotOverlay({
@@ -72,11 +59,6 @@ export function BaseSlotOverlay({
   isBuffering = false,
   loadedFrameCount = 0,
   metadataError,
-  isPreDecoding = false,
-  isPreDecoded = false,
-  preDecodeProgress = 0,
-  decodeProgressBarColor = 'bg-purple-500',
-  decodeProgressTextColor = 'text-purple-400',
 }: BaseSlotOverlayProps) {
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -132,9 +114,8 @@ export function BaseSlotOverlay({
         </div>
       )}
 
-      {/* 하단 우측: 프리로드 + 디코딩 상태 */}
-      <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1">
-        {/* 캐싱 상태 */}
+      {/* 하단 우측: 프리로드 상태 */}
+      <div className="absolute bottom-2 right-2">
         {isPreloading && (
           <div className="bg-black/60 text-xs px-2 py-1 rounded">
             <div className="flex items-center gap-2">
@@ -151,26 +132,6 @@ export function BaseSlotOverlay({
         {isPreloaded && !isPreloading && (
           <div className="bg-black/60 text-xs px-2 py-1 rounded">
             <span className="text-green-400">Cached</span>
-          </div>
-        )}
-
-        {/* 디코딩 상태 (캐싱 완료 후에만 표시) */}
-        {isPreloaded && isPreDecoding && (
-          <div className="bg-black/60 text-xs px-2 py-1 rounded">
-            <div className="flex items-center gap-2">
-              <div className="w-16 h-1.5 bg-gray-600 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${decodeProgressBarColor} transition-all duration-300`}
-                  style={{ width: `${preDecodeProgress}%` }}
-                />
-              </div>
-              <span className={`${decodeProgressTextColor} font-mono`}>{preDecodeProgress}%</span>
-            </div>
-          </div>
-        )}
-        {isPreloaded && isPreDecoded && !isPreDecoding && (
-          <div className="bg-black/60 text-xs px-2 py-1 rounded">
-            <span className="text-purple-400">Decoded</span>
           </div>
         )}
       </div>

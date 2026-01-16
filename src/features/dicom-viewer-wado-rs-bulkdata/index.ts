@@ -8,7 +8,6 @@
 // Components
 export { WadoRsBulkDataSlot, WADO_RS_BULKDATA_TOOL_GROUP_ID } from './components'
 export { WadoRsBulkDataSlotOverlay } from './components'
-export { BatchSizeTestPanel } from './components'
 export { FormatSelectorPanel } from './components'
 
 // Stores
@@ -32,5 +31,4 @@ export type {
   WadoRsBulkDataDragDropData,
   WadoRsBulkDataCineInfo,
   WadoRsBulkDataPlayableInstance,
-  BulkDataFormat,
 } from './types'

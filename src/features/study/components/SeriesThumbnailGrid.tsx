@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import type { Series } from '@/types'
 import { getModalityCardColor } from '@/constants/modality'
 import { useSeriesThumbnail } from '../hooks/useSeriesThumbnail'
+import { useViewerPrefetch } from '../hooks/useViewerPrefetch'
 
 interface SeriesThumbnailGridProps {
   seriesList: Series[]
@@ -24,7 +25,7 @@ interface SeriesThumbnailGridProps {
 /**
  * Series 카드 컴포넌트 (썸네일 포함)
  */
-type ViewerType = 'wado-rs-rendered' | 'wado-rs' | 'wado-uri' | 'mjpeg'
+type ViewerType = 'wado-rs-rendered' | 'wado-rs' | 'wado-uri' | 'mjpeg' | 'mjpeg-wado-rs'
 
 interface SeriesCardProps {
   series: Series
@@ -93,11 +94,11 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
 
         {/* Hover 오버레이 */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center">
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity grid grid-cols-2 gap-1.5 px-2">
             <Button
               variant="secondary"
               size="sm"
-              className="w-full text-xs"
+              className="text-xs"
               onClick={(e) => {
                 e.stopPropagation()
                 onView(series.id, 'wado-rs-rendered')
@@ -109,7 +110,7 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
             <Button
               variant="secondary"
               size="sm"
-              className="w-full text-xs"
+              className="text-xs"
               onClick={(e) => {
                 e.stopPropagation()
                 onView(series.id, 'wado-rs')
@@ -121,7 +122,7 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
             <Button
               variant="secondary"
               size="sm"
-              className="w-full text-xs"
+              className="text-xs"
               onClick={(e) => {
                 e.stopPropagation()
                 onView(series.id, 'wado-uri')
@@ -133,7 +134,7 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
             <Button
               variant="secondary"
               size="sm"
-              className="w-full text-xs bg-green-600 hover:bg-green-500 text-white"
+              className="text-xs bg-green-600 hover:bg-green-500 text-white"
               onClick={(e) => {
                 e.stopPropagation()
                 onView(series.id, 'mjpeg')
@@ -141,6 +142,18 @@ function SeriesCard({ series, studyInstanceUid, onView }: SeriesCardProps) {
             >
               <Eye className="h-3 w-3 mr-1" />
               MJPEG
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="col-span-2 text-xs bg-purple-600 hover:bg-purple-500 text-white"
+              onClick={(e) => {
+                e.stopPropagation()
+                onView(series.id, 'mjpeg-wado-rs')
+              }}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              MJPEG+WADO-RS
             </Button>
           </div>
         </div>
@@ -167,8 +180,9 @@ export default function SeriesThumbnailGrid({
   studyInstanceUid,
 }: SeriesThumbnailGridProps) {
   const navigate = useNavigate()
+  const { prefetch, isLoading: isPrefetching, progress } = useViewerPrefetch()
 
-  const handleViewSeries = (seriesId: string, viewerType: ViewerType) => {
+  const handleViewSeries = async (seriesId: string, viewerType: ViewerType) => {
     // MJPEG 뷰어는 별도 페이지로 이동 (자체 사이드바에서 instance 선택)
     if (viewerType === 'mjpeg') {
       navigate('/viewer/mjpeg')
@@ -178,6 +192,14 @@ export default function SeriesThumbnailGrid({
     // seriesId로 해당 Series 찾기
     const series = seriesList.find((s) => s.id === seriesId)
     if (!series || !studyInstanceUid) return
+
+    // Cornerstone 기반 뷰어인 경우 사전 준비 (WADO-RS만)
+    if (viewerType === 'wado-rs') {
+      await prefetch({
+        studyInstanceUid,
+        seriesInstanceUid: series.seriesInstanceUid,
+      })
+    }
 
     // studyInstanceUid와 seriesInstanceUid를 URL 파라미터로 전달
     navigate(`/viewer/${viewerType}/${studyInstanceUid}/${series.seriesInstanceUid}`)
@@ -193,15 +215,29 @@ export default function SeriesThumbnailGrid({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {seriesList.map((series) => (
-        <SeriesCard
-          key={series.id}
-          series={series}
-          studyInstanceUid={studyInstanceUid}
-          onView={handleViewSeries}
-        />
-      ))}
-    </div>
+    <>
+      {/* Series 그리드 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {seriesList.map((series) => (
+          <SeriesCard
+            key={series.id}
+            series={series}
+            studyInstanceUid={studyInstanceUid}
+            onView={handleViewSeries}
+          />
+        ))}
+      </div>
+
+      {/* 뷰어 준비 로딩 오버레이 */}
+      {isPrefetching && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
+          <div className="text-center text-white">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" />
+            <p className="text-lg font-medium">뷰어 준비 중...</p>
+            <p className="text-sm text-gray-400 mt-2">{progress}</p>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

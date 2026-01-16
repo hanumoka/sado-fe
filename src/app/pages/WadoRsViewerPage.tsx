@@ -15,7 +15,6 @@ import {
   useWadoRsBulkDataMultiViewerStore,
   WadoRsBulkDataSlot,
   WADO_RS_BULKDATA_TOOL_GROUP_ID,
-  BatchSizeTestPanel,
   FormatSelectorPanel,
 } from '@/features/dicom-viewer-wado-rs-bulkdata'
 import { initCornerstone } from '@/lib/cornerstone/initCornerstone'
@@ -288,12 +287,7 @@ export default function WadoRsViewerPage() {
       onThumbnailLoad={handleThumbnailLoad}
       onThumbnailError={handleThumbnailError}
       renderSlot={renderSlot}
-      extraControls={
-        <>
-          <FormatSelectorPanel />
-          <BatchSizeTestPanel />
-        </>
-      }
+      extraControls={<FormatSelectorPanel />}
       layoutOptions={WADO_RS_LAYOUT_OPTIONS}
     />
   )

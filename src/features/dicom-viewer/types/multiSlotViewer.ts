@@ -120,7 +120,7 @@ export interface CornerstoneSlotState {
 export type ResolutionMode = 'auto' | 'manual'
 
 /** 동기화 모드 (다중 뷰포트 재생 시) */
-export type SyncMode = 'independent' | 'global-sync' | 'master-slave'
+export type SyncMode = 'independent' | 'global-sync'
 
 /** 렌더링 모드 (CPU/GPU 선택) */
 export type RenderingMode = 'cpu' | 'gpu'
@@ -151,10 +151,8 @@ export interface CornerstoneMultiViewerState {
   allThumbnailsLoaded: boolean
 
   // 동기화 설정
-  /** 동기화 모드 (independent: 독립, global-sync: 전역 동기화, master-slave: 마스터-슬레이브) */
+  /** 동기화 모드 (independent: 독립, global-sync: 전역 동기화) */
   syncMode: SyncMode
-  /** 마스터 슬롯 ID (master-slave 모드용) */
-  masterSlotId: number | null
   /** 전역 버퍼링 상태 (global-sync 모드에서 어느 슬롯이 버퍼링 중인지) */
   globalBuffering: boolean
 

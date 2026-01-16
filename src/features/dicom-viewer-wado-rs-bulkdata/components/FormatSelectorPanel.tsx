@@ -41,11 +41,6 @@ const SYNC_MODE_OPTIONS: { value: SyncMode; label: string; description: string }
     label: 'Independent',
     description: '각 슬롯이 독립적으로 재생 (버퍼링 없이 개별 속도)',
   },
-  {
-    value: 'master-slave',
-    label: 'Master-Slave',
-    description: '마스터 슬롯에 맞춰 다른 슬롯 동기화',
-  },
 ]
 
 export function FormatSelectorPanel() {

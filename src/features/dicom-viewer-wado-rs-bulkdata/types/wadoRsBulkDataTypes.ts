@@ -169,8 +169,8 @@ export interface WadoRsBulkDataMultiViewerState {
   gpuSupported: boolean
 
   // 동기화 설정
-  /** 동기화 모드 (independent, global-sync, master-slave) */
-  syncMode: 'independent' | 'global-sync' | 'master-slave'
+  /** 동기화 모드 (independent, global-sync) */
+  syncMode: 'independent' | 'global-sync'
 }
 
 // ==================== 드래그 앤 드롭 ====================

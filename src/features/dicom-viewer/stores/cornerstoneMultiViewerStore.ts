@@ -208,7 +208,6 @@ interface CornerstoneMultiViewerActions {
 
   // 동기화 설정
   setSyncMode: (mode: SyncMode) => void
-  setMasterSlot: (slotId: number | null) => void
   setGlobalBuffering: (isBuffering: boolean) => void
 
   // 조정된 버퍼 대기
@@ -337,7 +336,6 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
 
   // 동기화 설정
   syncMode: 'global-sync' as SyncMode, // 기본값: 전역 동기화
-  masterSlotId: null as number | null,
   globalBuffering: false,
 
   // 렌더링 모드 설정
@@ -1461,14 +1459,6 @@ export const useCornerstoneMultiViewerStore = create<CornerstoneMultiViewerStore
     cineAnimationManager.setSyncMode(mode)
     if (DEBUG_STORE) {
       console.log(`[MultiViewer] Sync mode set to: ${mode}`)
-    }
-  },
-
-  setMasterSlot: (slotId) => {
-    set({ masterSlotId: slotId })
-    cineAnimationManager.setMasterSlot(slotId)
-    if (DEBUG_STORE) {
-      console.log(`[MultiViewer] Master slot set to: ${slotId}`)
     }
   },
 

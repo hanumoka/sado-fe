@@ -21,7 +21,7 @@
 import type { Types } from '@cornerstonejs/core'
 
 /** 동기화 모드 (다중 뷰포트 재생 시) */
-export type SyncMode = 'independent' | 'global-sync' | 'master-slave'
+export type SyncMode = 'independent' | 'global-sync'
 
 export interface ViewportInfo {
   viewport: Types.IStackViewport
@@ -55,7 +55,6 @@ export abstract class BaseCineAnimationManager {
 
   // 동기화 설정
   protected syncMode: SyncMode = 'global-sync'
-  protected masterSlotId: number | null = null
 
   // Global Sync 동기화 장벽 (Barrier Pattern)
   // playAll()에서 설정하여 모든 슬롯이 등록될 때까지 대기
@@ -79,7 +78,7 @@ export abstract class BaseCineAnimationManager {
 
   /**
    * 동기화 모드 설정
-   * @param mode 동기화 모드 (independent, global-sync, master-slave)
+   * @param mode 동기화 모드 (independent, global-sync)
    */
   setSyncMode(mode: SyncMode): void {
     this.syncMode = mode
@@ -93,17 +92,6 @@ export abstract class BaseCineAnimationManager {
    */
   getSyncMode(): SyncMode {
     return this.syncMode
-  }
-
-  /**
-   * 마스터 슬롯 설정 (master-slave 모드용)
-   * @param slotId 마스터 슬롯 ID
-   */
-  setMasterSlot(slotId: number | null): void {
-    this.masterSlotId = slotId
-    if (this.debugEnabled) {
-      console.log(`${this.logPrefix} Master slot set to: ${slotId}`)
-    }
   }
 
   /**
@@ -295,45 +283,6 @@ export abstract class BaseCineAnimationManager {
             if (this.debugEnabled) {
               console.log(`${this.logPrefix} Global-Sync: all slots synced to frame ${result.nextIndex}`)
             }
-          }
-        }
-        this.animationId = requestAnimationFrame(this.animate)
-        return
-      }
-
-      // Master-Slave 모드: 마스터만 전진하고 슬레이브는 따라감
-      if (this.syncMode === 'master-slave' && this.masterSlotId !== null) {
-        const masterInfo = this.viewports.get(this.masterSlotId)
-        if (masterInfo) {
-          const result = this.onFrameAdvance(this.masterSlotId, masterInfo.currentIndex, masterInfo.totalFrames)
-          if (result.shouldAdvance) {
-            masterInfo.currentIndex = result.nextIndex
-            try {
-              masterInfo.viewport.setImageIdIndex(result.nextIndex)
-              masterInfo.viewport.render()
-            } catch (error) {
-              if (this.debugEnabled) {
-                console.error(`${this.logPrefix} Error updating master viewport:`, error)
-              }
-            }
-
-            // 슬레이브 슬롯들 동기화
-            this.activeSlots.forEach((slotId) => {
-              if (slotId === this.masterSlotId) return
-              const slaveInfo = this.viewports.get(slotId)
-              if (slaveInfo) {
-                const slaveTargetFrame = result.nextIndex % slaveInfo.totalFrames
-                slaveInfo.currentIndex = slaveTargetFrame
-                try {
-                  slaveInfo.viewport.setImageIdIndex(slaveTargetFrame)
-                  slaveInfo.viewport.render()
-                } catch (error) {
-                  if (this.debugEnabled) {
-                    console.error(`${this.logPrefix} Error updating slave viewport ${slotId}:`, error)
-                  }
-                }
-              }
-            })
           }
         }
         this.animationId = requestAnimationFrame(this.animate)

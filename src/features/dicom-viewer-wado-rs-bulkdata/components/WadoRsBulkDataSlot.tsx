@@ -17,9 +17,9 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import { useWadoRsBulkDataMultiViewerStore } from '../stores/wadoRsBulkDataMultiViewerStore'
 import { handleDicomError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
-import { createWadoRsRenderedImageIds } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
 import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
+import { preDecodeManager } from '../utils/preDecodeManager'
 import { useShallow } from 'zustand/react/shallow'
 import { WadoRsBulkDataSlotOverlay } from './WadoRsBulkDataSlotOverlay'
 import type { WadoRsBulkDataInstanceSummary } from '../types/wadoRsBulkDataTypes'
@@ -69,6 +69,17 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     (state) => state.slots[slotId]?.stackVersion ?? 0
   )
 
+  // Pre-decode (사전 디코딩) 상태
+  const isPreDecoding = useWadoRsBulkDataMultiViewerStore(
+    (state) => state.slots[slotId]?.isPreDecoding ?? false
+  )
+  const isPreDecoded = useWadoRsBulkDataMultiViewerStore(
+    (state) => state.slots[slotId]?.isPreDecoded ?? false
+  )
+  const preDecodeProgress = useWadoRsBulkDataMultiViewerStore(
+    (state) => state.slots[slotId]?.preDecodeProgress ?? 0
+  )
+
   // 객체 타입 필드 (shallow 비교로 불필요한 리렌더링 방지)
   const instance = useWadoRsBulkDataMultiViewerStore(
     useShallow((state) => state.slots[slotId]?.instance ?? null)
@@ -83,14 +94,21 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   const [isStackLoaded, setIsStackLoaded] = useState(false)
   const [isViewportReady, setIsViewportReady] = useState(false)
 
+  // 사전 디코딩 중복 실행 방지용 ref
+  const preDecodeStartedRef = useRef(false)
+
   // 전역 상태 및 액션
   const globalFps = useWadoRsBulkDataMultiViewerStore((state) => state.globalFps)
-  const globalFormat = useWadoRsBulkDataMultiViewerStore((state) => state.globalFormat)
-  const globalResolution = useWadoRsBulkDataMultiViewerStore((state) => state.globalResolution)
   const syncMode = useWadoRsBulkDataMultiViewerStore((state) => state.syncMode)
   const assignInstanceToSlot = useWadoRsBulkDataMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useWadoRsBulkDataMultiViewerStore((state) => state.preloadSlotFrames)
   const setSlotMetadataError = useWadoRsBulkDataMultiViewerStore((state) => state.setSlotMetadataError)
+
+  // Pre-decode 액션
+  const startPreDecode = useWadoRsBulkDataMultiViewerStore((state) => state.startPreDecode)
+  const updatePreDecodeProgress = useWadoRsBulkDataMultiViewerStore((state) => state.updatePreDecodeProgress)
+  const finishPreDecode = useWadoRsBulkDataMultiViewerStore((state) => state.finishPreDecode)
+  const cancelPreDecode = useWadoRsBulkDataMultiViewerStore((state) => state.cancelPreDecode)
   const viewportId = `wado-rs-bulkdata-slot-${slotId}`
 
   // ==================== 드래그 앤 드롭 ====================
@@ -232,27 +250,13 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         // 메타데이터 실패해도 계속 진행 (fallback 값 사용)
       }
 
-      // Data Source에 따른 imageIds 생성
-      let imageIds: string[]
-      if (globalFormat === 'rendered') {
-        // Pre-rendered JPEG/PNG (resolution 지원)
-        imageIds = createWadoRsRenderedImageIds(
-          studyInstanceUid,
-          seriesInstanceUid,
-          sopInstanceUid,
-          numberOfFrames,
-          globalResolution
-        )
-      } else {
-        // WADO-RS BulkData (jpeg-baseline/original/raw)
-        imageIds = createWadoRsBulkDataImageIds(
-          studyInstanceUid,
-          seriesInstanceUid,
-          sopInstanceUid,
-          numberOfFrames,
-          globalFormat  // 'jpeg-baseline' | 'original' | 'raw'
-        )
-      }
+      // WADO-RS BulkData (Original 포맷) imageIds 생성
+      const imageIds = createWadoRsBulkDataImageIds(
+        studyInstanceUid,
+        seriesInstanceUid,
+        sopInstanceUid,
+        numberOfFrames
+      )
 
       try {
         if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
@@ -316,29 +320,89 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     return () => {
       wadoRsBulkDataCineAnimationManager.unregisterViewport(slotId)
     }
-  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, globalFormat, globalResolution])  // stackVersion: 캐시 클리어 시 Stack 재설정, globalFormat/globalResolution: 포맷/해상도 변경 시 재설정
+  }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, setSlotMetadataError])  // stackVersion: 캐시 클리어 시 Stack 재설정
 
-  // ==================== 사전 캐싱 (Phase 3 최적화) ====================
-  // Stack 로드 완료 직후 프리로드 시작
-  // - Independent 모드: 즉시 사전 캐싱 (빠른 재생 시작)
-  // - Global Sync 모드: playAll()이 조정하므로 건너뜀 (동기화 보장)
+  // ==================== 사전 캐싱 (Pre-caching) ====================
+  // Stack 로드 완료 직후 프리로드 시작 (모든 모드에서 동일)
+  // 미리 캐싱해두면 playAll() 호출 시 즉시 재생 가능
 
   useEffect(() => {
     if (!instance || !isStackLoaded) return
     if (instance.numberOfFrames <= 1) return
     if (isPreloaded || isPreloading) return
 
-    // Global Sync 모드: playAll()이 조정하므로 auto-preload 건너뜀
-    // (playAll()에서 모든 슬롯을 동시에 프리로드하여 동기화 보장)
-    if (syncMode === 'global-sync') {
-      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Global Sync - skipping auto-preload (playAll will coordinate)`)
-      return
+    // 모든 모드에서 Stack 로드 후 자동 프리로드 시작 (사전 캐싱)
+    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Pre-caching after stack loaded`)
+    preloadSlotFrames(slotId)
+  }, [instance?.sopInstanceUid, isStackLoaded, isPreloaded, isPreloading, slotId, preloadSlotFrames])
+
+  // ==================== 사전 디코딩 (Pre-decode) ====================
+  // 프리로드 완료 후 브라우저 유휴 시간에 프레임 사전 디코딩
+  // requestIdleCallback 활용으로 UI 블로킹 없이 백그라운드에서 디코딩
+
+  useEffect(() => {
+    // 조건: 프리로드 완료 + 멀티프레임
+    if (!instance || !isStackLoaded || !isPreloaded) return
+    if (instance.numberOfFrames <= 1) return
+
+    // ref로 중복 실행 방지 (의존성 배열 무한 루프 방지)
+    if (preDecodeStartedRef.current) return
+    preDecodeStartedRef.current = true
+
+    const { studyInstanceUid, seriesInstanceUid, sopInstanceUid, numberOfFrames } = instance
+
+    // WADO-RS BulkData (Original 포맷) ImageId 목록 생성
+    const imageIds = createWadoRsBulkDataImageIds(
+      studyInstanceUid,
+      seriesInstanceUid,
+      sopInstanceUid,
+      numberOfFrames
+    )
+
+    if (DEBUG_SLOT) {
+      console.log(`[WadoRsBulkDataSlot ${slotId}] Starting pre-decode for ${numberOfFrames} frames`)
     }
 
-    // Independent 모드: 즉시 프리로드 시작 (사전 캐싱)
-    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Pre-caching after stack loaded (Phase 3)`)
-    preloadSlotFrames(slotId)
-  }, [instance?.sopInstanceUid, isStackLoaded, isPreloaded, isPreloading, slotId, preloadSlotFrames, syncMode])
+    // 사전 디코딩 시작
+    startPreDecode(slotId)
+
+    // PreDecodeManager에 프레임 등록
+    preDecodeManager.preDecodeFrames(slotId, imageIds, 'normal')
+
+    // 진행률 구독
+    const unsubscribe = preDecodeManager.subscribe(slotId, (state) => {
+      const progress = state.totalFrames > 0
+        ? Math.round((state.decodedCount / state.totalFrames) * 100)
+        : 0
+
+      updatePreDecodeProgress(slotId, progress)
+
+      // 완료 시
+      if (state.decodedCount >= state.totalFrames) {
+        finishPreDecode(slotId)
+        if (DEBUG_SLOT) {
+          console.log(`[WadoRsBulkDataSlot ${slotId}] Pre-decode completed: ${state.decodedCount} frames`)
+        }
+      }
+    })
+
+    return () => {
+      unsubscribe()
+      // 컴포넌트 언마운트 시 해당 슬롯의 사전 디코딩 취소
+      preDecodeManager.cancelSlot(slotId)
+      cancelPreDecode(slotId)
+      preDecodeStartedRef.current = false
+    }
+  }, [
+    instance?.sopInstanceUid,
+    isStackLoaded,
+    isPreloaded,
+    slotId,
+    startPreDecode,
+    updatePreDecodeProgress,
+    finishPreDecode,
+    cancelPreDecode,
+  ])
 
   // ==================== 프레임 변경 시 뷰포트 업데이트 ====================
 
@@ -480,6 +544,9 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
           isPreloaded={isPreloaded}
           isPlaying={isPlaying}
           metadataError={metadataError}
+          isPreDecoding={isPreDecoding}
+          isPreDecoded={isPreDecoded}
+          preDecodeProgress={preDecodeProgress}
         />
       </div>
     </div>

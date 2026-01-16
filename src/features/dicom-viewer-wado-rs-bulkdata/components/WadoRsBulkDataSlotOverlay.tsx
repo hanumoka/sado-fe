@@ -15,6 +15,12 @@ interface WadoRsBulkDataSlotOverlayProps {
   isPlaying: boolean
   /** 메타데이터 fetch 에러 (non-fatal 경고) */
   metadataError?: string | null
+  /** 사전 디코딩 중 여부 */
+  isPreDecoding?: boolean
+  /** 사전 디코딩 완료 여부 */
+  isPreDecoded?: boolean
+  /** 사전 디코딩 진행률 (0-100) */
+  preDecodeProgress?: number
 }
 
 export function WadoRsBulkDataSlotOverlay({
@@ -25,6 +31,9 @@ export function WadoRsBulkDataSlotOverlay({
   isPreloaded,
   isPlaying,
   metadataError,
+  isPreDecoding,
+  isPreDecoded,
+  preDecodeProgress,
 }: WadoRsBulkDataSlotOverlayProps) {
   return (
     <BaseSlotOverlay
@@ -41,6 +50,12 @@ export function WadoRsBulkDataSlotOverlay({
       progressTextColor="text-cyan-400"
       // 메타데이터 에러 배너
       metadataError={metadataError}
+      // 사전 디코딩 상태
+      isPreDecoding={isPreDecoding}
+      isPreDecoded={isPreDecoded}
+      preDecodeProgress={preDecodeProgress}
+      decodeProgressBarColor="bg-purple-500"
+      decodeProgressTextColor="text-purple-400"
     />
   )
 }

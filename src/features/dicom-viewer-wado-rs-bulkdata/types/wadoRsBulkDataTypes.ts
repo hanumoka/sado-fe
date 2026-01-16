@@ -8,11 +8,9 @@
 // ==================== 레이아웃 타입 ====================
 
 /**
- * 그리드 레이아웃 타입
- * 타입은 공유 GridLayout과 호환성 유지, 런타임에서 3x3까지만 제한
- * (UI에서 4x4, 5x5 버튼을 숨김으로써 실제로는 3x3까지만 사용됨)
+ * 그리드 레이아웃 타입 (1x1, 2x2, 3x2, 3x3)
  */
-export type WadoRsBulkDataGridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
+export type WadoRsBulkDataGridLayout = '1x1' | '2x2' | '3x2' | '3x3'
 
 /** 렌더링 모드 (CPU/GPU 선택) */
 export type WadoRsBulkDataRenderingMode = 'cpu' | 'gpu'

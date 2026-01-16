@@ -19,12 +19,10 @@ function getGridClass(layout: GridLayout): string {
       return 'grid-cols-1 grid-rows-1'
     case '2x2':
       return 'grid-cols-2 grid-rows-2'
+    case '3x2':
+      return 'grid-cols-3 grid-rows-2'
     case '3x3':
       return 'grid-cols-3 grid-rows-3'
-    case '4x4':
-      return 'grid-cols-4 grid-rows-4'
-    case '5x5':
-      return 'grid-cols-5 grid-rows-5'
     default:
       return 'grid-cols-1 grid-rows-1'
   }

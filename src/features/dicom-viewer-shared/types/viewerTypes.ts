@@ -8,7 +8,7 @@
 // ==================== 레이아웃 ====================
 
 /** 그리드 레이아웃 타입 */
-export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
+export type GridLayout = '1x1' | '2x2' | '3x2' | '3x3'
 
 /** 레이아웃 옵션 */
 export interface LayoutOption {
@@ -21,9 +21,8 @@ export interface LayoutOption {
 export const LAYOUT_OPTIONS: LayoutOption[] = [
   { value: '1x1', label: '1×1', slots: 1 },
   { value: '2x2', label: '2×2', slots: 4 },
+  { value: '3x2', label: '3×2', slots: 6 },
   { value: '3x3', label: '3×3', slots: 9 },
-  { value: '4x4', label: '4×4', slots: 16 },
-  { value: '5x5', label: '5×5', slots: 25 },
 ]
 
 // ==================== 인스턴스 ====================

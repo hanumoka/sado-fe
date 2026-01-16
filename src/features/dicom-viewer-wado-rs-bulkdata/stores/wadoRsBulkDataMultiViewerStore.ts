@@ -23,11 +23,6 @@ import { handleDicomError, createImageLoadError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { loadWadoRsBulkDataImage } from '../utils/wadoRsBulkDataImageLoader'
 import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
-// TODO: 배치 프리페처 최적화 - HTTP 배치 요청으로 초기 버퍼 로딩 속도 개선
-// 현재는 개별 이미지 로딩 사용, 향후 loadAndCacheFrameBatch 통합 예정
-// import { prefetchAllFrames } from '../utils/wadoRsBatchPrefetcher'
-// import { loadAndCacheFrameBatch } from '../utils/wadoRsBulkDataBatchLoader'
-// import { clearPixelDataCache } from '../utils/wadoRsPixelDataCache'
 import { clearImageCache as clearRenderedCache } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import {
   getRenderingMode,
@@ -90,9 +85,10 @@ function getMaxSlots(layout: WadoRsBulkDataGridLayout): number {
       return 1
     case '2x2':
       return 4
+    case '3x2':
+      return 6
     case '3x3':
       return 9
-    // 4x4, 5x5는 UI에서 제한되어 더 이상 도달 불가
     default:
       return 1
   }
@@ -654,8 +650,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
       return
     }
 
-    // Progressive Playback: 초기 버퍼 크기 (15프레임 또는 전체의 15%)
-    const INITIAL_BUFFER_SIZE = Math.min(15, Math.ceil(slot.instance.numberOfFrames * 0.15))
+    // Progressive Playback: 초기 버퍼 크기 (5프레임 또는 전체의 5%) - Phase 2 최적화
+    const INITIAL_BUFFER_SIZE = Math.min(5, Math.ceil(slot.instance.numberOfFrames * 0.05))
 
     // 1. 프리로드 시작 (백그라운드, await 없음)
     if (!slot.isPreloaded && !slot.isPreloading) {
@@ -851,8 +847,8 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
         const slot = get().slots[slotId]
         if (!slot?.instance) return
         const numberOfFrames = slot.instance.numberOfFrames
-        // preloadSlotFrames와 동일한 공식: Math.min(15, Math.ceil(numberOfFrames * 0.15))
-        const requiredFrames = Math.min(15, Math.ceil(numberOfFrames * 0.15))
+        // preloadSlotFrames와 동일한 공식 (Phase 2 최적화)
+        const requiredFrames = Math.min(5, Math.ceil(numberOfFrames * 0.05))
         await waitForInitialBuffer(slotId, requiredFrames, get, 15000)
       })
     )
@@ -998,14 +994,13 @@ export const useWadoRsBulkDataMultiViewerStore = create<WadoRsBulkDataMultiViewe
     try {
       const { studyInstanceUid, seriesInstanceUid, sopInstanceUid } = slot.instance
 
-      // OHIF 방식: 2단계 프리로드
-      // Phase 1: 초기 버퍼 (15프레임 또는 15%) - 빠른 재생 시작
+      // OHIF 방식: 2단계 프리로드 - Phase 2 최적화
+      // Phase 1: 초기 버퍼 (5프레임 또는 5%) - 빠른 재생 시작
       // Phase 2: 나머지 프레임 - 백그라운드 로드
-      const INITIAL_BUFFER_SIZE = Math.min(15, Math.ceil(numberOfFrames * 0.15))
+      const INITIAL_BUFFER_SIZE = Math.min(5, Math.ceil(numberOfFrames * 0.05))
       // 브라우저 HTTP/1.1 연결 제한 (6개/호스트) 고려
-      // 4 슬롯 × BATCH_SIZE = 동시 요청 수
-      // BATCH_SIZE=1로 설정하여 4개 동시 요청 (6개 제한 내)
-      const BATCH_SIZE = 1
+      // BATCH_SIZE=5로 병렬 로딩하여 속도 향상 (Phase 2 최적화)
+      const BATCH_SIZE = 5
 
       // CRITICAL: 메타데이터를 먼저 로드해야 Cornerstone wadors 로더가 PixelData를 디코딩할 수 있음
       if (DEBUG_STORE) console.log(`[WadoRsBulkDataViewer] Fetching metadata for slot ${slotId}...`)

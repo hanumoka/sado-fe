@@ -7,8 +7,8 @@
 
 // ==================== 레이아웃 타입 ====================
 
-/** 그리드 레이아웃 타입 (1x1, 2x2, 3x3, 4x4, 5x5) */
-export type GridLayout = '1x1' | '2x2' | '3x3' | '4x4' | '5x5'
+/** 그리드 레이아웃 타입 (1x1, 2x2, 3x2, 3x3) */
+export type GridLayout = '1x1' | '2x2' | '3x2' | '3x3'
 
 /** API 타입 (DICOM 이미지 로딩 방식) - deprecated, use DataSourceType */
 export type ApiType = 'wado-rs' | 'wado-uri'

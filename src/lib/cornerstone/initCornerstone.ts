@@ -24,8 +24,6 @@ import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { registerWadoRsRenderedLoader } from './wadoRsRenderedLoader'
 import { registerWadoRsBulkDataMetadataProvider } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsBulkDataMetadataProvider'
-// L2 캐시 재활성화: 프리페치 효과 극대화
-import { enableWadoRsFetchInterceptor } from '@/features/dicom-viewer-wado-rs-bulkdata/utils/wadoRsFetchInterceptor'
 import { enableRenderedInterceptor } from '@/features/dicom-viewer/utils/wadoRsRenderedInterceptor'
 
 // 디버그 로그 플래그 (프로덕션에서는 false)
@@ -134,20 +132,16 @@ export async function initCornerstone(): Promise<void> {
       imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, cpuCores)    // 2N→N (CPU 부하 감소)
 
       // Cornerstone 내부 캐시 크기 설정 (2GB)
-      // OHIF 방식: 단일 캐시 계층으로 단순화
+      // OHIF 방식: 단일 캐시 계층으로 단순화 (Cornerstone 캐시만 사용)
       // 3x3 레이아웃 (9슬롯 × 100프레임 × ~2MB = ~1.8GB) 지원
-      // L2 캐시 제거 후 Cornerstone 캐시만 사용하므로 충분한 크기 필요
       cache.setMaxCacheSize(2 * 1024 * 1024 * 1024)
 
       if (DEBUG_INIT) console.log(`[Cornerstone] Step 1-0: Performance configured (retrieval: 6/10, decode: ${cpuCores}/${cpuCores * 2}, cache: 2GB)`)
 
-      // 1-1. WADO-RS Fetch Interceptors
-      // L2 캐시 재활성화: 프리페치된 PixelData를 캐시하여 재사용
-      // Rendered 인터셉터도 유지 (Pre-rendered 모드용)
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Enabling WADO-RS Fetch Interceptors...')
-      enableWadoRsFetchInterceptor()     // L2 캐시 활성화 (BulkData용)
-      enableRenderedInterceptor()        // Rendered (PNG) 인터셉터 유지
-      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: WADO-RS Fetch Interceptors enabled (BulkData + Rendered)')
+      // 1-1. WADO-RS Rendered 인터셉터 (Pre-rendered 모드용)
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Enabling Rendered Interceptor...')
+      enableRenderedInterceptor()
+      if (DEBUG_INIT) console.log('[Cornerstone] Step 1-1: Rendered Interceptor enabled')
 
       // 2. DICOM Image Loader 초기화 (v4 API)
       if (DEBUG_INIT) console.log('[Cornerstone] Step 2: Initializing DICOM image loader...')

@@ -14,11 +14,6 @@ export {
   clearPendingLoads,
 } from './wadoRsBulkDataImageLoader'
 export {
-  loadAndCacheFrameBatch,
-  getBatchLoaderStats,
-  resetBatchLoaderStats,
-} from './wadoRsBulkDataBatchLoader'
-export {
   fetchAndCacheMetadata,
   registerWadoRsBulkDataMetadataProvider,
   clearMetadataCache,

@@ -12,28 +12,16 @@ import type { ViewerFooterProps } from '../types/viewerTypes'
 import { VIEWER_THEMES } from '../types/viewerTypes'
 import { formatBytes } from '@/lib/utils'
 
-// WADO-RS Rendered 통계 (동적 import로 의존성 분리)
-let getRenderedPrefetcherStats: (() => {
-  resolutionStats: Array<{
-    resolution: number
-    frameCount: number
-    avgBytes: number
-    minBytes: number
-    maxBytes: number
-    totalBytes: number
-  }>
-}) | null = null
+// WADO-RS Rendered 캐시 통계 (동적 import로 의존성 분리)
 let getRenderedCacheStats: (() => { size: number; entries: number; hitRate: number }) | null = null
 
-// WADO-RS Rendered 통계 함수 로드 (lazy)
-async function loadRenderedStats() {
-  if (!getRenderedPrefetcherStats) {
-    const prefetcher = await import('@/features/dicom-viewer/utils/wadoRsRenderedPrefetcher')
+// WADO-RS Rendered 캐시 통계 함수 로드 (lazy)
+async function loadRenderedCacheStats() {
+  if (!getRenderedCacheStats) {
     const cache = await import('@/features/dicom-viewer/utils/wadoRsRenderedCache')
-    getRenderedPrefetcherStats = prefetcher.getRenderedPrefetcherStats
     getRenderedCacheStats = cache.getRenderedCacheStats
   }
-  return { getRenderedPrefetcherStats, getRenderedCacheStats }
+  return getRenderedCacheStats
 }
 
 const FPS_OPTIONS = [5, 10, 15, 30, 60]
@@ -62,18 +50,10 @@ export function ViewerFooter({
 }: ViewerFooterProps) {
   const theme = VIEWER_THEMES[accentColor]
 
-  // WADO-RS Rendered 통계 상태
+  // WADO-RS Rendered 캐시 통계 상태
   const isWadoRsRendered = displayName === 'WADO-RS Rendered'
   const [showStats, setShowStats] = useState(false)
   const [statsData, setStatsData] = useState<{
-    resolutionStats: Array<{
-      resolution: number
-      frameCount: number
-      avgBytes: number
-      minBytes: number
-      maxBytes: number
-      totalBytes: number
-    }>
     cacheSize: number
     cacheEntries: number
     hitRate: number
@@ -82,12 +62,10 @@ export function ViewerFooter({
   // 통계 새로고침
   const refreshStats = useCallback(async () => {
     try {
-      const { getRenderedPrefetcherStats: getPrefetcher, getRenderedCacheStats: getCache } = await loadRenderedStats()
-      if (getPrefetcher && getCache) {
-        const prefetcherStats = getPrefetcher()
+      const getCache = await loadRenderedCacheStats()
+      if (getCache) {
         const cacheStats = getCache()
         setStatsData({
-          resolutionStats: prefetcherStats.resolutionStats,
           cacheSize: cacheStats.size,
           cacheEntries: cacheStats.entries,
           hitRate: cacheStats.hitRate,
@@ -230,63 +208,13 @@ export function ViewerFooter({
             </button>
           </div>
 
-          {statsData && statsData.cacheEntries > 0 && (
-            <div className="text-xs text-gray-400 mb-2">
+          {statsData ? (
+            <div className="text-xs text-gray-400">
               캐시: {formatBytes(statsData.cacheSize)} ({statsData.cacheEntries}개 프레임) | 히트율: {statsData.hitRate}%
-            </div>
-          )}
-
-          {statsData && statsData.resolutionStats.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-gray-500 border-b border-gray-700">
-                    <th className="text-left py-1 px-2">Resolution</th>
-                    <th className="text-right py-1 px-2">프레임 수</th>
-                    <th className="text-right py-1 px-2">평균 크기</th>
-                    <th className="text-right py-1 px-2">최소</th>
-                    <th className="text-right py-1 px-2">최대</th>
-                    <th className="text-right py-1 px-2">총 크기</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statsData.resolutionStats.map((stat) => (
-                    <tr
-                      key={stat.resolution}
-                      className={`border-b border-gray-800 ${
-                        stat.resolution === globalResolution ? 'bg-blue-900/30 text-blue-300' : 'text-gray-300'
-                      }`}
-                    >
-                      <td className="py-1 px-2 font-medium">{stat.resolution}px</td>
-                      <td className="text-right py-1 px-2">{stat.frameCount}</td>
-                      <td className="text-right py-1 px-2 font-mono">{formatBytes(stat.avgBytes)}</td>
-                      <td className="text-right py-1 px-2 font-mono text-gray-500">{formatBytes(stat.minBytes)}</td>
-                      <td className="text-right py-1 px-2 font-mono text-gray-500">{formatBytes(stat.maxBytes)}</td>
-                      <td className="text-right py-1 px-2 font-mono">{formatBytes(stat.totalBytes)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* 크기 비교 */}
-              {statsData.resolutionStats.length >= 2 && (
-                <div className="mt-2 text-xs text-gray-500">
-                  {(() => {
-                    const sorted = [...statsData.resolutionStats].sort((a, b) => b.avgBytes - a.avgBytes)
-                    const largest = sorted[0]
-                    const smallest = sorted[sorted.length - 1]
-                    if (largest && smallest && smallest.avgBytes > 0) {
-                      const ratio = (largest.avgBytes / smallest.avgBytes).toFixed(1)
-                      return `${largest.resolution}px는 ${smallest.resolution}px보다 평균 ${ratio}배 큼`
-                    }
-                    return null
-                  })()}
-                </div>
-              )}
             </div>
           ) : (
             <div className="text-xs text-gray-500 italic">
-              아직 프리페치된 프레임이 없습니다. Play All을 실행하면 통계가 수집됩니다.
+              캐시 정보 없음
             </div>
           )}
         </div>

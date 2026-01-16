@@ -19,8 +19,7 @@ import { handleDicomError } from '@/lib/errors'
 import { createWadoRsBulkDataImageIds } from '../utils/wadoRsBulkDataImageIdHelper'
 import { createWadoRsRenderedImageIds } from '@/lib/cornerstone/wadoRsRenderedLoader'
 import { wadoRsBulkDataCineAnimationManager } from '../utils/wadoRsBulkDataCineAnimationManager'
-import { fetchAndCacheMetadata, getCachedMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
-import { prefetchFrameBatch } from '../utils/wadoRsBatchPrefetcher'
+import { fetchAndCacheMetadata } from '../utils/wadoRsBulkDataMetadataProvider'
 import { useShallow } from 'zustand/react/shallow'
 import { WadoRsBulkDataSlotOverlay } from './WadoRsBulkDataSlotOverlay'
 import type { WadoRsBulkDataInstanceSummary } from '../types/wadoRsBulkDataTypes'
@@ -88,7 +87,6 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
   const globalFps = useWadoRsBulkDataMultiViewerStore((state) => state.globalFps)
   const globalFormat = useWadoRsBulkDataMultiViewerStore((state) => state.globalFormat)
   const globalResolution = useWadoRsBulkDataMultiViewerStore((state) => state.globalResolution)
-  const allThumbnailsLoaded = useWadoRsBulkDataMultiViewerStore((state) => state.allThumbnailsLoaded)
   const syncMode = useWadoRsBulkDataMultiViewerStore((state) => state.syncMode)
   const assignInstanceToSlot = useWadoRsBulkDataMultiViewerStore((state) => state.assignInstanceToSlot)
   const preloadSlotFrames = useWadoRsBulkDataMultiViewerStore((state) => state.preloadSlotFrames)
@@ -256,39 +254,6 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
         )
       }
 
-      // 초기 프레임 배치 프리페치 (캐시에 저장) - rendered가 아닐 때만
-      // rendered 포맷은 별도의 Rendered Loader가 직접 처리
-      if (globalFormat !== 'rendered') {
-        // setStack/loadImage 호출 전에 캐시해야 개별 HTTP 요청 방지
-        // 배치 크기 10: 단일 프레임 요청 방지 + 초기 로드 최적화
-        const INITIAL_BATCH_SIZE = 10
-        const initialFrameCount = Math.min(INITIAL_BATCH_SIZE, numberOfFrames)
-        const initialFrames = Array.from({ length: initialFrameCount }, (_, i) => i + 1)
-
-        // 캐시된 메타데이터 가져오기 (original 인코딩 디코딩에 필요)
-        const cachedMetadata = getCachedMetadata(sopInstanceUid)
-
-        try {
-          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Prefetching ${initialFrameCount} frames via batch API (format: ${globalFormat})...`)
-          await prefetchFrameBatch(
-            studyInstanceUid,
-            seriesInstanceUid,
-            sopInstanceUid,
-            initialFrames,
-            undefined, // onProgress
-            {
-              format: globalFormat,
-              preferCompressed: globalFormat === 'original',
-              metadata: cachedMetadata,  // 메타데이터 전달 (original 인코딩 디코딩용)
-            }
-          )
-          if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Initial frames prefetched`)
-        } catch (prefetchErr) {
-          // 프리페치 실패해도 계속 진행 (개별 요청으로 fallback)
-          if (DEBUG_SLOT) console.warn(`[WadoRsBulkDataSlot ${slotId}] First frame prefetch failed:`, prefetchErr)
-        }
-      }
-
       try {
         if (DEBUG_SLOT) if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Calling setStack with ${imageIds.length} imageIds...`)
         await viewportRef.current!.setStack(imageIds)
@@ -353,32 +318,27 @@ export function WadoRsBulkDataSlot({ slotId, renderingEngineId }: WadoRsBulkData
     }
   }, [instance?.sopInstanceUid, loading, slotId, isViewportReady, renderingEngineId, stackVersion, globalFormat, globalResolution])  // stackVersion: 캐시 클리어 시 Stack 재설정, globalFormat/globalResolution: 포맷/해상도 변경 시 재설정
 
-  // ==================== 자동 프리로드 ====================
-  // Global Sync 모드에서는 자동 프리로드 비활성화
-  // → playAll()에서 모든 슬롯을 동시에 프리로드하여 동시 재생 시작 보장
-  // Independent/Master-Slave 모드에서는 기존대로 자동 프리로드
+  // ==================== 사전 캐싱 (Phase 3 최적화) ====================
+  // Stack 로드 완료 직후 프리로드 시작
+  // - Independent 모드: 즉시 사전 캐싱 (빠른 재생 시작)
+  // - Global Sync 모드: playAll()이 조정하므로 건너뜀 (동기화 보장)
 
   useEffect(() => {
-    if (!instance || isPreloaded || isPreloading) return
+    if (!instance || !isStackLoaded) return
     if (instance.numberOfFrames <= 1) return
+    if (isPreloaded || isPreloading) return
 
-    // Global Sync 모드: 자동 프리로드 비활성화 (playAll()에서 통제)
-    // 이를 통해 모든 슬롯이 동일한 상태에서 시작하여 동시 재생 보장
+    // Global Sync 모드: playAll()이 조정하므로 auto-preload 건너뜀
+    // (playAll()에서 모든 슬롯을 동시에 프리로드하여 동기화 보장)
     if (syncMode === 'global-sync') {
-      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Global Sync mode - skipping auto-preload (will be handled by playAll)`)
+      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Global Sync - skipping auto-preload (playAll will coordinate)`)
       return
     }
 
-    // 썸네일 로딩 완료 대기 (썸네일 우선 전략)
-    if (!allThumbnailsLoaded) {
-      if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Waiting for thumbnails before preload`)
-      return
-    }
-
-    // 인스턴스 할당 후 자동 프리로드 (Independent/Master-Slave 모드)
-    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Starting preload (thumbnails loaded)`)
+    // Independent 모드: 즉시 프리로드 시작 (사전 캐싱)
+    if (DEBUG_SLOT) console.log(`[WadoRsBulkDataSlot ${slotId}] Pre-caching after stack loaded (Phase 3)`)
     preloadSlotFrames(slotId)
-  }, [instance?.sopInstanceUid, isPreloaded, isPreloading, allThumbnailsLoaded, slotId, preloadSlotFrames, syncMode])
+  }, [instance?.sopInstanceUid, isStackLoaded, isPreloaded, isPreloading, slotId, preloadSlotFrames, syncMode])
 
   // ==================== 프레임 변경 시 뷰포트 업데이트 ====================
 

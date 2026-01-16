@@ -23,10 +23,8 @@ import { BaseViewerLayout, useViewerPage, wadoRsBulkDataStrategy, LAYOUT_OPTIONS
 import type { WadoRsBulkDataInstanceSummary } from '@/features/dicom-viewer-wado-rs-bulkdata'
 import type { BaseInstanceInfo, GridLayout } from '@/features/dicom-viewer-shared'
 
-// WADO-RS BulkData는 3x3까지만 지원 (메모리/CPU 최적화)
-const WADO_RS_LAYOUT_OPTIONS = LAYOUT_OPTIONS.filter(
-  (option) => !['4x4', '5x5'].includes(option.value)
-)
+// WADO-RS BulkData 레이아웃 옵션 (1x1, 2x2, 3x2, 3x3)
+const WADO_RS_LAYOUT_OPTIONS = LAYOUT_OPTIONS
 
 // 디버그 로그 플래그
 const DEBUG_PAGE = false
@@ -245,7 +243,7 @@ export default function WadoRsViewerPage() {
     setLayout(newLayout)
 
     if (filteredInstances.length && studyInstanceUid && seriesInstanceUid) {
-      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x3' ? 9 : newLayout === '4x4' ? 16 : 25
+      const newSlots = newLayout === '1x1' ? 1 : newLayout === '2x2' ? 4 : newLayout === '3x2' ? 6 : 9
       filteredInstances.slice(0, newSlots).forEach((instance, index) => {
         const instanceSummary: WadoRsBulkDataInstanceSummary = {
           sopInstanceUid: instance.sopInstanceUid,

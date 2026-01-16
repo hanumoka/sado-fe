@@ -7,7 +7,6 @@
  */
 import { useState, useCallback } from 'react'
 import { useCornerstoneMultiViewerStore } from '../stores'
-import { getRenderedPrefetcherStats, type ResolutionStatsInfo } from '../utils/wadoRsRenderedPrefetcher'
 import { getRenderedCacheStats } from '../utils/wadoRsRenderedCache'
 import { formatBytes } from '@/lib/utils'
 import type { GridLayout, DataSourceType, SyncMode, RenderingMode } from '../types/multiSlotViewer'
@@ -16,6 +15,7 @@ import { DATA_SOURCE_CONFIG } from '../types/multiSlotViewer'
 const LAYOUT_OPTIONS: { value: GridLayout; label: string }[] = [
   { value: '1x1', label: '1×1' },
   { value: '2x2', label: '2×2' },
+  { value: '3x2', label: '3×2' },
   { value: '3x3', label: '3×3' },
 ]
 
@@ -85,16 +85,13 @@ export function CornerstoneGlobalControls() {
   // GPU 모드 전환 경고 모달 상태
   const [showGpuWarning, setShowGpuWarning] = useState(false)
 
-  // Resolution별 크기 통계 상태
+  // 캐시 통계 상태
   const [showStats, setShowStats] = useState(false)
-  const [resolutionStats, setResolutionStats] = useState<ResolutionStatsInfo[]>([])
   const [cacheStats, setCacheStats] = useState<{ size: number; entries: number; hitRate: number } | null>(null)
 
   // 통계 새로고침
   const refreshStats = useCallback(() => {
-    const prefetcherStats = getRenderedPrefetcherStats()
     const cache = getRenderedCacheStats()
-    setResolutionStats(prefetcherStats.resolutionStats)
     setCacheStats({ size: cache.size, entries: cache.entries, hitRate: cache.hitRate })
   }, [])
 
@@ -334,68 +331,18 @@ export function CornerstoneGlobalControls() {
         )}
       </div>
 
-      {/* Resolution별 크기 통계 패널 */}
+      {/* 캐시 통계 패널 */}
       {showStats && (
         <div className="mt-3 p-3 bg-gray-900 rounded border border-gray-700">
-          <div className="text-sm text-gray-300 font-medium mb-2">Resolution별 프레임 크기 통계</div>
+          <div className="text-sm text-gray-300 font-medium mb-2">캐시 상태</div>
 
-          {/* 캐시 상태 */}
-          {cacheStats && (
-            <div className="text-xs text-gray-400 mb-2">
-              캐시: {formatBytes(cacheStats.size)} ({cacheStats.entries}개 프레임) | 히트율: {cacheStats.hitRate}%
+          {cacheStats ? (
+            <div className="text-xs text-gray-400">
+              크기: {formatBytes(cacheStats.size)} ({cacheStats.entries}개 프레임) | 히트율: {cacheStats.hitRate}%
             </div>
-          )}
-
-          {/* Resolution별 크기 테이블 */}
-          {resolutionStats.length > 0 ? (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b border-gray-700">
-                  <th className="text-left py-1 px-2">Resolution</th>
-                  <th className="text-right py-1 px-2">프레임 수</th>
-                  <th className="text-right py-1 px-2">평균 크기</th>
-                  <th className="text-right py-1 px-2">최소</th>
-                  <th className="text-right py-1 px-2">최대</th>
-                  <th className="text-right py-1 px-2">총 크기</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resolutionStats.map((stat) => (
-                  <tr
-                    key={stat.resolution}
-                    className={`border-b border-gray-800 ${
-                      stat.resolution === globalResolution ? 'bg-blue-900/30 text-blue-300' : 'text-gray-300'
-                    }`}
-                  >
-                    <td className="py-1 px-2 font-medium">{stat.resolution}px</td>
-                    <td className="text-right py-1 px-2">{stat.frameCount}</td>
-                    <td className="text-right py-1 px-2 font-mono">{formatBytes(stat.avgBytes)}</td>
-                    <td className="text-right py-1 px-2 font-mono text-gray-500">{formatBytes(stat.minBytes)}</td>
-                    <td className="text-right py-1 px-2 font-mono text-gray-500">{formatBytes(stat.maxBytes)}</td>
-                    <td className="text-right py-1 px-2 font-mono">{formatBytes(stat.totalBytes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           ) : (
             <div className="text-xs text-gray-500 italic">
-              아직 프리페치된 프레임이 없습니다. Play All을 실행하면 통계가 수집됩니다.
-            </div>
-          )}
-
-          {/* 크기 비교 설명 */}
-          {resolutionStats.length >= 2 && (
-            <div className="mt-2 text-xs text-gray-500">
-              {(() => {
-                const sorted = [...resolutionStats].sort((a, b) => b.avgBytes - a.avgBytes)
-                const largest = sorted[0]
-                const smallest = sorted[sorted.length - 1]
-                if (largest && smallest && smallest.avgBytes > 0) {
-                  const ratio = (largest.avgBytes / smallest.avgBytes).toFixed(1)
-                  return `${largest.resolution}px는 ${smallest.resolution}px보다 평균 ${ratio}배 큼`
-                }
-                return null
-              })()}
+              캐시 정보 없음
             </div>
           )}
         </div>

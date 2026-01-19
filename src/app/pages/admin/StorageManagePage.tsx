@@ -124,9 +124,6 @@ export default function StorageManagePage() {
     enabled: activeTab === 'overview',
   })
 
-  // DEBUG: capacity 데이터 로깅
-  console.log('[StorageManagePage] capacity:', capacity, 'loading:', capacityLoading, 'error:', capacityError)
-
   const { data: trends, isLoading: trendsLoading } = useQuery({
     queryKey: ['storageTrends', trendRange],
     queryFn: () => fetchStorageMetricsTrends(trendRange),

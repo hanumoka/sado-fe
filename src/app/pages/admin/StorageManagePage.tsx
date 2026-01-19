@@ -15,6 +15,9 @@ import {
   HardDrive,
   FolderOpen,
   ChevronRight,
+  ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   ArrowLeft,
   Trash2,
   Download,
@@ -41,14 +44,15 @@ import {
   fetchStorageByTenant,
   fetchTieringPolicies,
   fetchClusterStatus,
-  fetchVolumes,
+  fetchVolumesPaged,
+  fetchCollectionStats,
   fetchFilerDirectory,
   deleteFilerFile,
   getFilerDownloadUrl,
   fetchMonitoringTasks,
 } from '@/lib/services/adminService'
 import { formatBytes } from '@/lib/utils'
-import type { ClusterStatus, VolumeInfo, FilerEntry, MasterNode, VolumeServerNode, FilerNode } from '@/types/seaweedfs'
+import type { ClusterStatus, VolumeInfo, FilerEntry, MasterNode, VolumeServerNode, FilerNode, VolumePageParams, CollectionStats } from '@/types/seaweedfs'
 
 // Components
 import StatCard from '@/components/admin/StatCard'
@@ -62,7 +66,7 @@ import StorageTrendsChart from '@/components/charts/StorageTrendsChart'
 
 type Tab = 'overview' | 'monitoring' | 'tiering' | 'seaweedfs'
 type TrendRange = '7d' | '30d' | '90d'
-type SeaweedFSSubTab = 'cluster' | 'volumes' | 'filer'
+type SeaweedFSSubTab = 'cluster' | 'collections' | 'volumes' | 'filer'
 
 function formatTime(isoString: string): string {
   const date = new Date(isoString)
@@ -94,6 +98,15 @@ export default function StorageManagePage() {
   const [seaweedfsSubTab, setSeaweedfsSubTab] = useState<SeaweedFSSubTab>('cluster')
   const [currentPath, setCurrentPath] = useState('/buckets/minipacs')
   const [filerError, setFilerError] = useState<string | null>(null)
+
+  // Volume 페이징/필터 상태
+  const [volumeParams, setVolumeParams] = useState<VolumePageParams>({
+    page: 0,
+    size: 20,
+    sortBy: 'id',
+    order: 'asc',
+  })
+
   const queryClient = useQueryClient()
 
   // ========== Overview Tab Queries ==========
@@ -164,10 +177,16 @@ export default function StorageManagePage() {
     enabled: activeTab === 'seaweedfs',
   })
 
-  const { data: volumes, isLoading: volumesLoading, refetch: refetchVolumes } = useQuery({
-    queryKey: ['volumes'],
-    queryFn: fetchVolumes,
+  const { data: volumesData, isLoading: volumesLoading, refetch: refetchVolumes } = useQuery({
+    queryKey: ['volumesPaged', volumeParams],
+    queryFn: () => fetchVolumesPaged(volumeParams),
     enabled: activeTab === 'seaweedfs' && seaweedfsSubTab === 'volumes',
+  })
+
+  const { data: collectionStats, isLoading: collectionsLoading, refetch: refetchCollections } = useQuery({
+    queryKey: ['collectionStats'],
+    queryFn: fetchCollectionStats,
+    enabled: activeTab === 'seaweedfs' && seaweedfsSubTab === 'collections',
   })
 
   const { data: filerEntries, isLoading: filerLoading, refetch: refetchFiler } = useQuery({
@@ -553,12 +572,72 @@ export default function StorageManagePage() {
     </div>
   )
 
-  const renderSeaweedFSTab = () => (
+  const renderSeaweedFSTab = () => {
+    // 용량 사용률 계산
+    const capacityUsagePercent = clusterStatus && clusterStatus.totalCapacity > 0
+      ? (clusterStatus.totalUsedSize / clusterStatus.totalCapacity) * 100
+      : 0
+
+    // 임계값 상수
+    const WARNING_THRESHOLD = 70
+    const CRITICAL_THRESHOLD = 85
+
+    return (
     <div className="space-y-6">
+      {/* 용량 임계값 경고 배너 */}
+      {clusterStatus && capacityUsagePercent >= WARNING_THRESHOLD && (
+        <div className={`rounded-lg border p-4 ${
+          capacityUsagePercent >= CRITICAL_THRESHOLD
+            ? 'bg-red-50 border-red-200'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <div className="flex items-start gap-3">
+            <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
+              capacityUsagePercent >= CRITICAL_THRESHOLD
+                ? 'text-red-500'
+                : 'text-yellow-500'
+            }`} />
+            <div className="flex-1">
+              <h4 className={`font-semibold ${
+                capacityUsagePercent >= CRITICAL_THRESHOLD
+                  ? 'text-red-800'
+                  : 'text-yellow-800'
+              }`}>
+                {capacityUsagePercent >= CRITICAL_THRESHOLD
+                  ? '스토리지 용량 위험'
+                  : '스토리지 용량 주의'}
+              </h4>
+              <p className={`text-sm mt-1 ${
+                capacityUsagePercent >= CRITICAL_THRESHOLD
+                  ? 'text-red-700'
+                  : 'text-yellow-700'
+              }`}>
+                현재 스토리지 사용량이 {capacityUsagePercent.toFixed(1)}%입니다.
+                {capacityUsagePercent >= CRITICAL_THRESHOLD
+                  ? ' 즉시 용량 확보가 필요합니다. 새로운 Volume을 추가하거나 불필요한 파일을 삭제하세요.'
+                  : ' 용량 관리가 필요합니다. 저장공간 확보를 고려해 주세요.'}
+              </p>
+              <div className="mt-2 flex items-center gap-4 text-sm">
+                <span className={capacityUsagePercent >= CRITICAL_THRESHOLD ? 'text-red-600' : 'text-yellow-600'}>
+                  사용: {formatBytes(clusterStatus.totalUsedSize)}
+                </span>
+                <span className="text-gray-500">
+                  전체: {formatBytes(clusterStatus.totalCapacity)}
+                </span>
+                <span className="text-gray-500">
+                  여유: {formatBytes(clusterStatus.totalFreeSize)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 서브 탭 */}
       <div className="flex gap-2 border-b border-gray-200 pb-2">
         {([
           { id: 'cluster' as const, label: '클러스터 상태' },
+          { id: 'collections' as const, label: 'Collection 통계' },
           { id: 'volumes' as const, label: 'Volume 목록' },
           { id: 'filer' as const, label: '파일 탐색기' },
         ]).map(tab => (
@@ -785,12 +864,12 @@ export default function StorageManagePage() {
         </div>
       )}
 
-      {/* Volume 목록 */}
-      {seaweedfsSubTab === 'volumes' && (
-        <div>
-          <div className="flex justify-end mb-4">
+      {/* Collection 통계 */}
+      {seaweedfsSubTab === 'collections' && (
+        <div className="space-y-4">
+          <div className="flex justify-end">
             <button
-              onClick={() => refetchVolumes()}
+              onClick={() => refetchCollections()}
               className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
               <RefreshCw className="h-4 w-4" />
@@ -798,37 +877,319 @@ export default function StorageManagePage() {
             </button>
           </div>
 
+          {collectionsLoading ? (
+            <div className="animate-pulse grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-40 bg-gray-100 rounded-lg"></div>
+              ))}
+            </div>
+          ) : collectionStats && collectionStats.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {collectionStats.map((stat: CollectionStats) => (
+                <div
+                  key={stat.collection}
+                  className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                >
+                  {/* Collection 헤더 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-900">
+                      {stat.collection === '(default)' ? (
+                        <span className="text-gray-500">{stat.collection}</span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-sm">
+                          {stat.collection}
+                        </span>
+                      )}
+                    </h4>
+                    <span className="text-xs text-gray-500">
+                      {stat.volumeCount} volumes
+                    </span>
+                  </div>
+
+                  {/* 용량 Progress Bar */}
+                  <div className="mb-3">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>{formatBytes(stat.totalUsedSize)}</span>
+                      <span>{formatBytes(stat.totalSize)}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${
+                          stat.usagePercent > 90 ? 'bg-red-500' :
+                          stat.usagePercent > 70 ? 'bg-yellow-500' :
+                          'bg-blue-500'
+                        }`}
+                        style={{ width: `${Math.min(stat.usagePercent, 100)}%` }}
+                      />
+                    </div>
+                    <div className="text-right text-xs text-gray-500 mt-1">
+                      {stat.usagePercent.toFixed(1)}% 사용
+                    </div>
+                  </div>
+
+                  {/* 상세 통계 */}
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">파일 수</span>
+                      <span className="font-medium text-gray-900">{stat.totalFileCount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">RW/RO</span>
+                      <span className="font-medium">
+                        <span className="text-green-600">{stat.readWriteCount}</span>
+                        {' / '}
+                        <span className="text-yellow-600">{stat.readOnlyCount}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Volume ID 목록 (접힘) */}
+                  <details className="mt-3">
+                    <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                      Volume ID 보기
+                    </summary>
+                    <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2">
+                      {stat.volumeIds.join(', ')}
+                    </div>
+                  </details>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-gray-500 py-12">
+              Collection 정보가 없습니다.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Volume 목록 */}
+      {seaweedfsSubTab === 'volumes' && (
+        <div className="space-y-4">
+          {/* 필터 및 새로고침 */}
+          <div className="flex flex-wrap items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            {/* Collection 필터 */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Collection:</label>
+              <select
+                value={volumeParams.collection || ''}
+                onChange={(e) => setVolumeParams(prev => ({
+                  ...prev,
+                  collection: e.target.value || undefined,
+                  page: 0,
+                }))}
+                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">전체</option>
+                {volumesData?.availableCollections?.map(col => (
+                  <option key={col} value={col}>{col}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status 필터 */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">상태:</label>
+              <select
+                value={volumeParams.status || ''}
+                onChange={(e) => setVolumeParams(prev => ({
+                  ...prev,
+                  status: e.target.value || undefined,
+                  page: 0,
+                }))}
+                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">전체</option>
+                <option value="ReadWrite">ReadWrite</option>
+                <option value="ReadOnly">ReadOnly</option>
+              </select>
+            </div>
+
+            {/* 페이지 크기 */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">표시:</label>
+              <select
+                value={volumeParams.size || 20}
+                onChange={(e) => setVolumeParams(prev => ({
+                  ...prev,
+                  size: Number(e.target.value),
+                  page: 0,
+                }))}
+                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={10}>10개</option>
+                <option value={20}>20개</option>
+                <option value={50}>50개</option>
+                <option value={100}>100개</option>
+              </select>
+            </div>
+
+            <div className="flex-1" />
+
+            {/* 통계 */}
+            {volumesData && (
+              <span className="text-sm text-gray-500">
+                총 {volumesData.totalElements}개
+              </span>
+            )}
+
+            {/* 새로고침 */}
+            <button
+              onClick={() => refetchVolumes()}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-gray-200 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <RefreshCw className="h-4 w-4" />
+              새로고침
+            </button>
+          </div>
+
+          {/* 테이블 */}
           {volumesLoading ? (
             <div className="animate-pulse space-y-2">
               {[1, 2, 3].map(i => (
                 <div key={i} className="h-16 bg-gray-100 rounded-lg"></div>
               ))}
             </div>
-          ) : volumes && volumes.length > 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">ID</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Collection</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">파일 수</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">크기</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">서버</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {volumes.map((volume: VolumeInfo) => (
-                    <tr key={volume.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 text-sm text-gray-900">{volume.id}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{volume.collection || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600 text-right">{volume.fileCount.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600 text-right">{formatBytes(volume.size)}</td>
-                      <td className="py-3 px-4 text-sm text-gray-500">{volume.serverUrl}</td>
+          ) : volumesData && volumesData.content.length > 0 ? (
+            <>
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th
+                        className="text-left py-3 px-4 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => setVolumeParams(prev => ({
+                          ...prev,
+                          sortBy: 'id',
+                          order: prev.sortBy === 'id' && prev.order === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <div className="flex items-center gap-1">
+                          ID
+                          {volumeParams.sortBy === 'id' && (
+                            volumeParams.order === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-left py-3 px-4 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => setVolumeParams(prev => ({
+                          ...prev,
+                          sortBy: 'collection',
+                          order: prev.sortBy === 'collection' && prev.order === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <div className="flex items-center gap-1">
+                          Collection
+                          {volumeParams.sortBy === 'collection' && (
+                            volumeParams.order === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">상태</th>
+                      <th
+                        className="text-right py-3 px-4 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => setVolumeParams(prev => ({
+                          ...prev,
+                          sortBy: 'fileCount',
+                          order: prev.sortBy === 'fileCount' && prev.order === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          파일 수
+                          {volumeParams.sortBy === 'fileCount' && (
+                            volumeParams.order === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-4 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => setVolumeParams(prev => ({
+                          ...prev,
+                          sortBy: 'size',
+                          order: prev.sortBy === 'size' && prev.order === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          크기
+                          {volumeParams.sortBy === 'size' && (
+                            volumeParams.order === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">서버</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {volumesData.content.map((volume: VolumeInfo) => (
+                      <tr key={volume.id} className="border-t border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm text-gray-900 font-medium">{volume.id}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">
+                          {volume.collection ? (
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                              {volume.collection}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            volume.status === 'ReadWrite'
+                              ? 'bg-green-50 text-green-700'
+                              : 'bg-yellow-50 text-yellow-700'
+                          }`}>
+                            {volume.status === 'ReadWrite' ? 'RW' : 'RO'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600 text-right">{volume.fileCount.toLocaleString()}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600 text-right">{formatBytes(volume.size)}</td>
+                        <td className="py-3 px-4 text-sm text-gray-500">{volume.serverUrl}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 페이지네이션 */}
+              {volumesData.totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setVolumeParams(prev => ({ ...prev, page: 0 }))}
+                    disabled={volumesData.first}
+                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    처음
+                  </button>
+                  <button
+                    onClick={() => setVolumeParams(prev => ({ ...prev, page: (prev.page || 0) - 1 }))}
+                    disabled={volumesData.first}
+                    className="p-1.5 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  <span className="px-4 py-1.5 text-sm text-gray-600">
+                    {volumesData.page + 1} / {volumesData.totalPages}
+                  </span>
+
+                  <button
+                    onClick={() => setVolumeParams(prev => ({ ...prev, page: (prev.page || 0) + 1 }))}
+                    disabled={volumesData.last}
+                    className="p-1.5 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setVolumeParams(prev => ({ ...prev, page: volumesData.totalPages - 1 }))}
+                    disabled={volumesData.last}
+                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    마지막
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center text-gray-500 py-12">Volume이 없습니다.</div>
           )}

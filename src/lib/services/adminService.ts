@@ -23,7 +23,7 @@ import type {
   TierTransitionHistory,
   MonitoringTasksResponse,
 } from '@/types'
-import type { FilerEntry, ClusterStatus, VolumeInfo, CreateVolumeRequest } from '@/types/seaweedfs'
+import type { FilerEntry, ClusterStatus, VolumeInfo, CreateVolumeRequest, VolumePageResponse, VolumePageParams, CollectionStats } from '@/types/seaweedfs'
 
 /**
  * Dashboard 전체 통계 조회
@@ -188,6 +188,42 @@ async function fetchVolumesImpl(): Promise<VolumeInfo[]> {
 }
 
 /**
+ * SeaweedFS Volume 목록 조회 (페이징 + 필터링)
+ *
+ * @param params - 페이징/필터 파라미터
+ * @returns Promise<VolumePageResponse>
+ */
+async function fetchVolumesPagedImpl(params: VolumePageParams = {}): Promise<VolumePageResponse> {
+  const searchParams = new URLSearchParams()
+
+  if (params.page !== undefined) searchParams.set('page', params.page.toString())
+  if (params.size !== undefined) searchParams.set('size', params.size.toString())
+  if (params.collection) searchParams.set('collection', params.collection)
+  if (params.status) searchParams.set('status', params.status)
+  if (params.sortBy) searchParams.set('sortBy', params.sortBy)
+  if (params.order) searchParams.set('order', params.order)
+
+  const queryString = searchParams.toString()
+  const url = queryString
+    ? `/api/admin/seaweedfs/volumes/page?${queryString}`
+    : '/api/admin/seaweedfs/volumes/page'
+
+  const response = await api.get<VolumePageResponse>(url)
+  if (!response) throw new Error('No response from server')
+  return response
+}
+
+/**
+ * SeaweedFS Collection별 통계 조회
+ *
+ * @returns Promise<CollectionStats[]>
+ */
+async function fetchCollectionStatsImpl(): Promise<CollectionStats[]> {
+  const response = await api.get<CollectionStats[]>('/api/admin/seaweedfs/collections/stats')
+  return response ?? []
+}
+
+/**
  * SeaweedFS Volume 생성
  *
  * @param request - Volume 생성 요청
@@ -289,6 +325,8 @@ export const fetchSeaweedFSCapacity = fetchSeaweedFSCapacityImpl
 export const fetchFilerDirectory = fetchFilerDirectoryImpl
 export const fetchClusterStatus = fetchClusterStatusImpl
 export const fetchVolumes = fetchVolumesImpl
+export const fetchVolumesPaged = fetchVolumesPagedImpl
+export const fetchCollectionStats = fetchCollectionStatsImpl
 export const createVolume = createVolumeImpl
 export const deleteVolume = deleteVolumeImpl
 export const deleteFilerFile = deleteFilerFileImpl

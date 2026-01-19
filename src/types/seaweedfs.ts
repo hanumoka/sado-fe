@@ -142,3 +142,55 @@ export interface CreateVolumeRequest {
   ttl?: string
   dataCenter?: string
 }
+
+/** Volume 페이징 응답 */
+export interface VolumePageResponse {
+  /** Volume 목록 */
+  content: VolumeInfo[]
+  /** 현재 페이지 (0부터 시작) */
+  page: number
+  /** 페이지 크기 */
+  size: number
+  /** 전체 요소 수 */
+  totalElements: number
+  /** 전체 페이지 수 */
+  totalPages: number
+  /** 첫 페이지 여부 */
+  first: boolean
+  /** 마지막 페이지 여부 */
+  last: boolean
+  /** 사용 가능한 Collection 목록 (필터 드롭다운용) */
+  availableCollections: string[]
+}
+
+/** Volume 페이징 요청 파라미터 */
+export interface VolumePageParams {
+  page?: number
+  size?: number
+  collection?: string
+  status?: string
+  sortBy?: 'id' | 'size' | 'fileCount' | 'usedSize' | 'collection'
+  order?: 'asc' | 'desc'
+}
+
+/** Collection별 통계 */
+export interface CollectionStats {
+  /** Collection 이름 (null이면 "(default)") */
+  collection: string
+  /** Volume 수 */
+  volumeCount: number
+  /** 총 파일 수 */
+  totalFileCount: number
+  /** 총 사용량 (bytes) */
+  totalUsedSize: number
+  /** 총 용량 (bytes) */
+  totalSize: number
+  /** ReadWrite 상태 Volume 수 */
+  readWriteCount: number
+  /** ReadOnly 상태 Volume 수 */
+  readOnlyCount: number
+  /** 소속 Volume ID 목록 */
+  volumeIds: number[]
+  /** 사용률 (%) - BE에서 계산 */
+  usagePercent: number
+}

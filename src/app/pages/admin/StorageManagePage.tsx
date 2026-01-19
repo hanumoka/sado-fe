@@ -1291,6 +1291,7 @@ export default function StorageManagePage() {
       )}
     </div>
   )
+  }
 
   return (
     <div className="space-y-6">

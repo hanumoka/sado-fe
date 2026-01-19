@@ -117,7 +117,7 @@ export default function StorageManagePage() {
   })
 
   // ========== Overview Tab Additional Queries ==========
-  const { data: capacity, isLoading: capacityLoading, error: capacityError } = useQuery({
+  const { data: capacity, isLoading: capacityLoading } = useQuery({
     queryKey: ['seaweedfsCapacity'],
     queryFn: fetchSeaweedFSCapacity,
     refetchInterval: 60000,

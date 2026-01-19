@@ -126,7 +126,8 @@ export interface ClusterStatus {
 export interface VolumeInfo {
   id: number
   size: number
-  collection: string
+  /** Collection 이름 (null이면 default collection) */
+  collection: string | null
   replication: string
   status: string
   fileCount: number

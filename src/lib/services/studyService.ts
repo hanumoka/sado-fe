@@ -11,6 +11,7 @@
 import { api } from '@/lib/api'
 import type { Study, Series } from '@/types'
 import type { StudySearchParams } from '@/features/study/types/study'
+import { adaptSeriesResponse, type SeriesResponse } from './adapters'
 
 /**
  * Backend StudyResponse DTO
@@ -98,50 +99,6 @@ async function fetchStudyByIdImpl(studyId: string): Promise<Study | null> {
   }
 
   return adaptStudyResponse(response)
-}
-
-/**
- * Backend SeriesResponse DTO
- */
-interface SeriesResponse {
-  id: number
-  uuid: string | null
-  studyId: number
-  studyDescription: string | null
-  patientName: string | null
-  seriesInstanceUid: string
-  modality: string | null
-  seriesDescription: string | null
-  bodyPartExamined: string | null
-  manufacturer: string | null
-  manufacturerModelName: string | null
-  seriesNumber: number | null
-  numberOfInstances: number | null
-  createdAt: string | null
-  updatedAt: string | null
-  tenantId: number | null
-}
-
-/**
- * Backend SeriesResponse → Frontend Series 변환
- */
-function adaptSeriesResponse(response: SeriesResponse): Series {
-  return {
-    id: String(response.id),
-    uuid: response.uuid ?? undefined,
-    seriesInstanceUid: response.seriesInstanceUid,
-    studyId: String(response.studyId),
-    studyDescription: response.studyDescription ?? undefined,
-    patientName: response.patientName ?? undefined,
-    seriesNumber: response.seriesNumber ?? 0,
-    modality: response.modality || '',
-    seriesDescription: response.seriesDescription || '',
-    bodyPartExamined: response.bodyPartExamined ?? undefined,
-    manufacturer: response.manufacturer ?? undefined,
-    manufacturerModelName: response.manufacturerModelName ?? undefined,
-    instancesCount: response.numberOfInstances ?? 0,
-    tenantId: response.tenantId ?? undefined,
-  }
 }
 
 /**

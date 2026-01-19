@@ -22,6 +22,7 @@ import {
   CheckCircle,
   AlertTriangle,
   XCircle,
+  X,
   Users,
   FileText,
   Film,
@@ -92,6 +93,7 @@ export default function StorageManagePage() {
   const [trendRange, setTrendRange] = useState<TrendRange>('7d')
   const [seaweedfsSubTab, setSeaweedfsSubTab] = useState<SeaweedFSSubTab>('cluster')
   const [currentPath, setCurrentPath] = useState('/buckets/minipacs')
+  const [filerError, setFilerError] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   // ========== Overview Tab Queries ==========
@@ -177,7 +179,11 @@ export default function StorageManagePage() {
   const deleteMutation = useMutation({
     mutationFn: deleteFilerFile,
     onSuccess: () => {
+      setFilerError(null)
       queryClient.invalidateQueries({ queryKey: ['filerDirectory'] })
+    },
+    onError: (error: Error) => {
+      setFilerError(`파일 삭제 실패: ${error.message}`)
     },
   })
 
@@ -200,10 +206,12 @@ export default function StorageManagePage() {
 
   const handleDownload = async (path: string) => {
     try {
+      setFilerError(null)
       const url = await getFilerDownloadUrl(path)
       window.open(url, '_blank')
     } catch (error) {
-      console.error('Download failed:', error)
+      const message = error instanceof Error ? error.message : '알 수 없는 오류'
+      setFilerError(`다운로드 실패: ${message}`)
     }
   }
 
@@ -846,6 +854,23 @@ export default function StorageManagePage() {
               <RefreshCw className="h-4 w-4" />
             </button>
           </div>
+
+          {/* 에러 알림 */}
+          {filerError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-700">
+                <XCircle className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm">{filerError}</span>
+              </div>
+              <button
+                onClick={() => setFilerError(null)}
+                className="p-1 hover:bg-red-100 rounded"
+                title="닫기"
+              >
+                <X className="h-4 w-4 text-red-500" />
+              </button>
+            </div>
+          )}
 
           {filerLoading ? (
             <div className="animate-pulse space-y-2">
